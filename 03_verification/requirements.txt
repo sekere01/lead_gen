@@ -1,0 +1,7 @@
+# Verification dependencies
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.0
+python-dotenv>=1.0.0
+dnspython>=2.0.0
+email-validator>=2.0.0
+disposable-email-domains>=0.0.0

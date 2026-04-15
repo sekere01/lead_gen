@@ -1,0 +1,32 @@
+# TLD scores for regional scoring
+# Higher scores indicate higher regional relevance
+# Format: {tld: score}
+
+tlds:
+  .cn: 3    # China
+  .in: 3    # India
+  .br: 3   # Brazil
+  .mx: 3    # Mexico
+  .ru: 3    # Russia
+  .de: 3    # Germany
+  .fr: 3    # France
+  .nl: 3    # Netherlands
+  .tr: 3    # Turkey
+  .ng: 3    # Nigeria
+  .co.uk: 3 # United Kingdom
+  .za: 3    # South Africa
+  .au: 3     # Australia
+  .jp: 3     # Japan
+  .kr: 3     # South Korea
+  .id: 3     # Indonesia
+  .pk: 3     # Pakistan
+  .bd: 3     # Bangladesh
+  .es: 3     # Spain
+  .it: 3     # Italy
+  .ca: 3      # Canada
+  # Generic TLDs (default score = 1)
+  .com: 1
+  .org: 1
+  .net: 1
+  .io: 1
+  .co: 1

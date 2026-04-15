@@ -1,0 +1,76 @@
+# City keywords for regional scoring
+# Format: {region: [cities]}
+# Case-insensitive matching
+
+regions:
+  china:
+    - beijing
+    - shanghai
+    - shenzhen
+    - guangzhou
+    - hangzhou
+    - chengdu
+    - wuhan
+    - xian
+  nigeria:
+    - lagos
+    - abuja
+    - ibadan
+    - kano
+    - enugu
+    - portharcourt
+  india:
+    - mumbai
+    - delhi
+    - bangalore
+    - hyderabad
+    - chennai
+    - kolkata
+    - pune
+  germany:
+    - berlin
+    - munich
+    - hamburg
+    - frankfurt
+    - cologne
+    - stuttgart
+  brazil:
+    - sao paulo
+    - rio de janeiro
+    - brasilia
+    - salvador
+  turkey:
+    - istanbul
+    - ankara
+    - izmir
+    - antalya
+  uk:
+    - london
+    - manchester
+    - birmingham
+    - edinburgh
+    - glasgow
+  france:
+    - paris
+    - marseille
+    - lyon
+    - nice
+  usa:
+    - new york
+    - los angeles
+    - chicago
+    - houston
+    - san francisco
+    - seattle
+    - boston
+  australia:
+    - sydney
+    - melbourne
+    - brisbane
+    - perth
+  japan:
+    - tokyo
+    - osaka
+    - kyoto
+    - yokohama
+    - nagoya

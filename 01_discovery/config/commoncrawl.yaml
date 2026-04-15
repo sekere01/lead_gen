@@ -1,0 +1,40 @@
+# CommonCrawl configuration
+enabled: false  # CommonCrawl API returning 504 timeouts - disabled for now
+max_results: 500
+fallback_max_results: 200
+min_results_before_fallback: 50
+timeout: 15
+
+# TLD mapping for regions
+region_tld_map:
+  turkey: com.tr
+  nigeria: com.ng
+  china: com.cn
+  india: in
+  brazil: com.br
+  mexico: com.mx
+  russia: ru
+  germany: de
+  france: fr
+  netherlands: nl
+  usa: com
+  united states: com
+  uk: co.uk
+  united kingdom: co.uk
+  southafrica: co.za
+  korea: co.kr
+  japan: co.jp
+  australia: com.au
+  indonesia: id
+  pakistan: pk
+  bangladesh: bd
+  spain: es
+  italy: it
+  canada: ca
+  global: com,net,org
+
+# Fallback TLDs when no region specified
+fallback_tlds:
+  - com
+  - net
+  - org

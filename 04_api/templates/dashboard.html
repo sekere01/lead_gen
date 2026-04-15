@@ -1,0 +1,735 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lead Gen Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Inter', sans-serif; background: #f8fafc; color: #1e293b; line-height: 1.5; }
+        
+        .header { background: #fff; border-bottom: 1px solid #e2e8f0; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; }
+        .header h1 { font-size: 20px; font-weight: 600; }
+        
+        .container { max-width: 1400px; margin: 0 auto; padding: 24px; }
+        
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+        .stat-card { background: #fff; border-radius: 12px; padding: 20px; border: 1px solid #e2e8f0; }
+        .stat-card h3 { font-size: 13px; color: #64748b; font-weight: 500; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .stat-card .value { font-size: 32px; font-weight: 700; color: #0f172a; }
+        .stat-card .value.pending { color: #f59e0b; }
+        .stat-card .value.completed { color: #10b981; }
+        .stat-card .value.failed { color: #ef4444; }
+        
+        .panels { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+        @media (max-width: 1024px) { .panels { grid-template-columns: 1fr; } }
+        
+        .panel { background: #fff; border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden; }
+        .panel-header { padding: 16px 20px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; }
+        .panel-header h2 { font-size: 16px; font-weight: 600; }
+        .panel-body { padding: 20px; }
+        
+        .services-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+        .service-item { padding: 16px; background: #f8fafc; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; }
+        .service-item .name { font-weight: 500; }
+        .service-item .status { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; }
+        .status-dot.running { background: #10b981; }
+        .status-dot.stopped { background: #94a3b8; }
+        
+        .btn { padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 500; border: none; cursor: pointer; transition: all 0.2s; }
+        .btn-primary { background: #3b82f6; color: #fff; }
+        .btn-primary:hover { background: #2563eb; }
+        .btn-success { background: #10b981; color: #fff; }
+        .btn-success:hover { background: #059669; }
+        .btn-danger { background: #ef4444; color: #fff; }
+        .btn-danger:hover { background: #dc2626; }
+        .btn-secondary { background: #e2e8f0; color: #475569; }
+        .btn-secondary:hover { background: #cbd5e1; }
+        .btn-sm { padding: 6px 12px; font-size: 12px; }
+        
+        .form-group { margin-bottom: 16px; }
+        .form-group label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; color: #475569; }
+        .form-group input, .form-group textarea, .form-group select { width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; }
+        .form-group input:focus, .form-group textarea:focus, .form-group select:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
+        
+        .table { width: 100%; border-collapse: collapse; }
+        .table th, .table td { padding: 12px 16px; text-align: left; border-bottom: 1px solid #e2e8f0; }
+        .modal .table { width: 100%; }
+        .modal .table th, .modal .table td { padding: 4px 8px; font-size: 12px; }
+        .table th { font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; background: #f8fafc; }
+        .table td { font-size: 14px; }
+        .table tr:hover { background: #f8fafc; }
+        
+        .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 500; }
+        .badge.pending { background: #fef3c7; color: #92400e; }
+        .badge.processing { background: #dbeafe; color: #1e40af; }
+        .badge.completed { background: #d1fae5; color: #065f46; }
+        .badge.failed { background: #fee2e2; color: #991b1b; }
+        
+        .queue-list { max-height: 300px; overflow-y: auto; }
+        .queue-item { padding: 12px 16px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; }
+        .queue-item:last-child { border-bottom: none; }
+        .queue-item .keyword { font-weight: 500; }
+        .queue-item .meta { font-size: 12px; color: #64748b; }
+        
+        .tabs { display: flex; border-bottom: 1px solid #e2e8f0; }
+        .tab { padding: 12px 20px; font-size: 14px; font-weight: 500; color: #64748b; cursor: pointer; border-bottom: 2px solid transparent; display: flex; align-items: center; gap: 8px; }
+        .tab.active { color: #3b82f6; border-bottom-color: #3b82f6; }
+        .tab span { cursor: pointer; }
+        
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        
+        .modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 1000; }
+        .modal.active { display: flex; }
+        .modal-content { background: #fff; border-radius: 12px; width: 90%; max-width: 500px; max-height: 90vh; overflow-y: auto; }
+        .modal-header { padding: 20px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; }
+        .modal-body { padding: 20px; }
+        
+        .logs-container { background: #1e293b; color: #e2e8f0; padding: 16px; border-radius: 8px; font-family: monospace; font-size: 12px; max-height: 400px; overflow-y: auto; }
+        .log-line { margin-bottom: 4px; }
+        .log-ts { color: #64748b; }
+        
+        .empty-state { text-align: center; padding: 40px; color: #64748b; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Lead Gen Pipeline Dashboard</h1>
+        <div>
+            <button class="btn btn-secondary" onclick="showTab('jobs')">Jobs</button>
+            <button class="btn btn-secondary" onclick="showTab('templates')">Templates</button>
+            <button class="btn btn-secondary" onclick="viewLogs()">Logs</button>
+        </div>
+    </div>
+    
+    <div class="container">
+        <div class="stats-grid" id="stats">
+            <div class="stat-card" style="cursor: pointer;" onclick="showCompaniesModal()">
+                <h3>Companies</h3>
+                <div class="value" id="total-companies">-</div>
+            </div>
+            <div class="stat-card" style="cursor: pointer;" onclick="showContactsModal()">
+                <h3>Contacts</h3>
+                <div class="value" id="total-contacts">-</div>
+            </div>
+            <div class="stat-card" style="cursor: pointer;" onclick="showContactsModal('valid_verified')">
+                <h3>Verified</h3>
+                <div class="value completed" id="verified-contacts">-</div>
+            </div>
+            <div class="stat-card">
+                <h3>Pending Jobs</h3>
+                <div class="value pending" id="pending-jobs">-</div>
+            </div>
+            <div class="stat-card" style="cursor: pointer;" onclick="showJobsModal('completed')">
+                <h3>Completed</h3>
+                <div class="value completed" id="completed-jobs">-</div>
+            </div>
+            <div class="stat-card" style="cursor: pointer;" onclick="showJobsModal('failed')">
+                <h3>Failed</h3>
+                <div class="value failed" id="failed-jobs">-</div>
+            </div>
+        </div>
+        
+        <div class="panels">
+            <div class="panel">
+                <div class="panel-header">
+                    <h2>Services</h2>
+                    <button class="btn btn-sm btn-secondary" onclick="refreshServices()">Refresh</button>
+                </div>
+                <div class="panel-body">
+                    <div class="services-grid" id="services"></div>
+                </div>
+            </div>
+            
+            <div class="panel">
+                <div class="panel-header">
+                    <h2>Job Queue</h2>
+                    <div style="display: flex; gap: 8px;">
+                        <button class="btn btn-sm btn-secondary" onclick="showBulkJobModal()">Bulk Create</button>
+                        <button class="btn btn-sm btn-primary" onclick="showCreateJob()">+ New Job</button>
+                    </div>
+                </div>
+                <div class="panel-body">
+                    <div class="queue-list" id="job-queue"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="modal" id="bulk-job-modal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h2>Bulk Create Jobs</h2>
+                <button onclick="closeModal('bulk-job-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Keywords (one per line)</label>
+                    <textarea id="bulk-keywords" rows="6" placeholder="keyword1&#10;keyword2&#10;keyword3"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Region</label>
+                    <input type="text" id="bulk-region" value="Global">
+                </div>
+                <button class="btn btn-primary" onclick="createBulkJobs()">Create Jobs</button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="modal" id="create-job-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Create Job</h2>
+                <button onclick="closeModal('create-job-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Keyword</label>
+                    <input type="text" id="job-keyword" placeholder="e.g., software company">
+                </div>
+                <div class="form-group">
+                    <label>Region</label>
+                    <input type="text" id="job-region" value="Global">
+                </div>
+                <button class="btn btn-primary" onclick="createJob()">Create</button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="modal" id="logs-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Pipeline Logs</h2>
+                <button onclick="closeModal('logs-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="logs-container" id="logs-content"></div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="modal" id="companies-modal">
+        <div class="modal-content" style="max-width: 1200px; width: 95%;">
+            <div class="modal-header">
+                <h2>Companies</h2>
+                <button onclick="closeModal('companies-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group" style="display: flex; gap: 12px;">
+                    <input type="text" id="companies-search" placeholder="Search by domain..." oninput="filterCompanies()">
+                    <select id="companies-filter" onchange="filterCompanies()">
+                        <option value="">All Statuses</option>
+                        <option value="discovered">Discovered</option>
+                        <option value="enriched">Enriched</option>
+                        <option value="browsing">Browsing</option>
+                        <option value="verified">Verified</option>
+                        <option value="failed">Failed</option>
+                    </select>
+                </div>
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Domain</th>
+                            <th>Industry</th>
+                            <th>Status</th>
+                            <th>Score</th>
+                            <th>Created</th>
+                        </tr>
+                    </thead>
+                    <tbody id="companies-modal-list"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <div class="modal" id="contacts-modal">
+        <div class="modal-content" style="max-width: 1100px; width: 95%;">
+            <div class="modal-header">
+                <h2>Contacts</h2>
+                <button onclick="closeModal('contacts-modal')">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 12px; overflow: hidden;">
+                <div class="form-group" style="display: flex; gap: 8px; margin-bottom: 8px;">
+                    <input type="text" id="contacts-search" placeholder="Search by email..." oninput="filterContacts()" style="flex: 1;">
+                    <select id="contacts-filter" onchange="filterContacts()" style="width: 150px;">
+                        <option value="">All Statuses</option>
+                        <option value="valid_verified">Valid Verified</option>
+                        <option value="no_mx_records">No MX</option>
+                        <option value="invalid_syntax">Invalid</option>
+                        <option value="unknown">Unknown</option>
+                    </select>
+                </div>
+                <div style="max-height: 60vh; overflow-y: auto;">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th style="width: 18%;">Email</th>
+                                <th style="width: 25%;">Job Title</th>
+                                <th style="width: 18%;">Verification</th>
+                                <th style="width: 12%;">Verified</th>
+                                <th style="width: 27%;">Created</th>
+                            </tr>
+                        </thead>
+                        <tbody id="contacts-modal-list"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="modal" id="jobs-modal">
+        <div class="modal-content" style="max-width: 1200px; width: 95%;">
+            <div class="modal-header">
+                <h2 id="jobs-modal-title">Jobs</h2>
+                <button onclick="closeModal('jobs-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <input type="text" id="jobs-search" placeholder="Search by keyword..." oninput="filterJobsModal()">
+                </div>
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Keyword</th>
+                            <th>Region</th>
+                            <th>Status</th>
+                            <th>Results</th>
+                            <th>Created</th>
+                        </tr>
+                    </thead>
+                    <tbody id="jobs-modal-list"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API = '/api/v1';
+        
+        async function loadDashboard() {
+            try {
+                const res = await fetch(`${API}/dashboard/stats`);
+                const data = await res.json();
+                
+                document.getElementById('total-companies').textContent = data.metrics.companies_total;
+                document.getElementById('total-contacts').textContent = data.metrics.contacts_total;
+                document.getElementById('verified-contacts').textContent = data.metrics.verified_count;
+                document.getElementById('pending-jobs').textContent = data.metrics.pending_jobs;
+                document.getElementById('completed-jobs').textContent = data.metrics.completed_jobs;
+                document.getElementById('failed-jobs').textContent = data.metrics.failed_jobs;
+                
+                const servicesGrid = document.getElementById('services');
+                const servicesList = data.services && data.services.services ? data.services.services : [];
+                if (servicesList.length === 0) {
+                    servicesGrid.innerHTML = '<div class="empty-state">No services</div>';
+                } else {
+                    servicesGrid.innerHTML = servicesList.map((s) => `
+                        <div class="service-item">
+                            <span class="name">${s.name}</span>
+                            <div class="status">
+                                <span class="status-dot ${s.status === 'running' ? 'running' : 'stopped'}"></span>
+                                ${s.status === 'running' ? 'Running' : 'Stopped'}
+                            </div>
+                        </div>
+                    `).join('');
+                }
+                
+                const queueList = document.getElementById('job-queue');
+                if (data.job_queue.length === 0) {
+                    queueList.innerHTML = '<div class="empty-state">No pending jobs</div>';
+                } else {
+                    queueList.innerHTML = data.job_queue.map(job => `
+                        <div class="queue-item">
+                            <div>
+                                <div class="keyword">${job.keyword}</div>
+                                <div class="meta">${job.region}</div>
+                            </div>
+                            <span class="badge ${job.status}">${job.status}</span>
+                        </div>
+                    `).join('');
+                }
+            } catch (e) {
+                console.error('Failed to load dashboard:', e);
+            }
+        }
+        
+        async function loadJobHistory() {
+            try {
+                const res = await fetch(`${API}/discovery-jobs?limit=20`);
+                const data = await res.json();
+                
+                const tbody = document.getElementById('job-history');
+                const jobs = data.jobs || data;
+                if (!jobs || jobs.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No jobs found</td></tr>';
+                } else {
+                    tbody.innerHTML = jobs.map(job => `
+                        <tr>
+                            <td>${job.id}</td>
+                            <td>${job.keyword}</td>
+                            <td>${job.region}</td>
+                            <td><span class="badge ${job.status}">${job.status}</span></td>
+                            <td>${job.results_count}</td>
+                            <td>${new Date(job.created_at).toLocaleString()}</td>
+                            <td>
+                                ${job.status === 'failed' ? `<button class="btn btn-sm btn-secondary" onclick="retryJob(${job.id})">Retry</button>` : ''}
+                            </td>
+                        </tr>
+                    `).join('');
+                }
+            } catch (e) {
+                console.error('Failed to load job history:', e);
+                const tbody = document.getElementById('job-history');
+                tbody.innerHTML = '<tr><td colspan="7" class="empty-state">Error loading jobs</td></tr>';
+            }
+        }
+        
+        async function loadCompanies() {
+            try {
+                const res = await fetch(`${API}/companies?limit=20`);
+                const data = await res.json();
+                
+                const tbody = document.getElementById('company-list');
+                const companiesList = data.companies || data;
+                if (!companiesList || companiesList.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No companies found</td></tr>';
+                } else {
+                    tbody.innerHTML = companiesList.map(c => `
+                        <tr>
+                            <td>${c.domain}</td>
+                            <td>${c.status}</td>
+                            <td>${c.discovery_score}</td>
+                            <td>${c.discovery_score >= 8 ? 'Strong' : c.discovery_score >= 5 ? 'Good' : 'Weak'}</td>
+                        </tr>
+                    `).join('');
+                }
+            } catch (e) {
+                console.error('Failed to load companies:', e);
+                const tbody = document.getElementById('company-list');
+                tbody.innerHTML = '<tr><td colspan="4" class="empty-state">Error loading companies</td></tr>';
+            }
+        }
+        
+        async function refreshServices() {
+            try {
+                await fetch(`${API}/services/refresh`, { method: 'POST' });
+                loadDashboard();
+            } catch (e) {
+                console.error('Failed to refresh services:', e);
+            }
+        }
+        
+        async function createJob() {
+            const keyword = document.getElementById('job-keyword').value;
+            const region = document.getElementById('job-region').value;
+            
+            if (!keyword) return alert('Keyword required');
+            
+            try {
+                await fetch(`${API}/discovery-jobs`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ keyword, region })
+                });
+                closeModal('create-job-modal');
+                loadDashboard();
+                document.getElementById('job-keyword').value = '';
+            } catch (e) {
+                console.error('Failed to create job:', e);
+            }
+        }
+        
+        async function createBulkJobs() {
+            const keywordsText = document.getElementById('bulk-keywords').value;
+            const region = document.getElementById('bulk-region').value;
+            
+            const keywords = keywordsText.split('\n').map(k => k.trim()).filter(k => k);
+            if (keywords.length === 0) return alert('Keywords required');
+            
+            try {
+                const res = await fetch(`${API}/discovery-jobs/bulk`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ keywords, region })
+                });
+                const result = await res.json();
+                alert(`Created ${result.created} jobs, skipped ${result.skipped}`);
+                loadDashboard();
+                closeModal('bulk-job-modal');
+                document.getElementById('bulk-keywords').value = '';
+            } catch (e) {
+                console.error('Failed to create bulk jobs:', e);
+            }
+        }
+        
+        async function retryJob(jobId) {
+            try {
+                await fetch(`${API}/discovery-jobs/${jobId}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: 'pending' })
+                });
+                loadDashboard();
+                loadJobHistory();
+            } catch (e) {
+                console.error('Failed to retry job:', e);
+            }
+        }
+        
+        async function viewLogs() {
+            try {
+                const res = await fetch(`${API}/services/logs`);
+                if (!res.ok) throw new Error('Logs endpoint not found');
+                const data = await res.json();
+                
+                const container = document.getElementById('logs-content');
+                const logs = data.logs || [];
+                if (!logs || logs.length === 0) {
+                    container.innerHTML = '<div class="log-line">No logs available</div>';
+                } else {
+                    container.innerHTML = logs.map(line => `
+                        <div class="log-line"><span class="log-ts">[${new Date().toLocaleTimeString()}]</span> ${line}</div>
+                    `).join('');
+                }
+                document.getElementById('logs-modal').classList.add('active');
+            } catch (e) {
+                console.error('Failed to load logs:', e);
+                const container = document.getElementById('logs-content');
+                container.innerHTML = '<div class="log-line">Logs not available</div>';
+                document.getElementById('logs-modal').classList.add('active');
+            }
+        }
+        
+        async function loadTemplates() {
+            try {
+                const res = await fetch(`${API}/discovery-jobs/templates`);
+                const data = await res.json();
+                
+                const tbody = document.getElementById('template-list');
+                const templates = data.templates || data;
+                if (!templates || templates.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No templates found</td></tr>';
+                } else {
+                    tbody.innerHTML = templates.map(t => `
+                        <tr>
+                            <td>${t.name}</td>
+                            <td>${t.keyword}</td>
+                            <td>${t.region}</td>
+                            <td>
+                                <button class="btn btn-sm btn-secondary" onclick="useTemplate(${t.id})">Use</button>
+                                <button class="btn btn-sm btn-danger" onclick="deleteTemplate(${t.id})">Delete</button>
+                            </td>
+                        </tr>
+                    `).join('');
+                }
+            } catch (e) {
+                console.error('Failed to load templates:', e);
+            }
+        }
+        
+        async function createTemplate() {
+            const name = document.getElementById('template-name').value;
+            const keyword = document.getElementById('template-keyword').value;
+            const region = document.getElementById('template-region').value;
+            
+            if (!name || !keyword) return alert('Name and keyword required');
+            
+            try {
+                await fetch(`${API}/discovery-jobs/templates`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, keyword, region })
+                });
+                document.getElementById('template-name').value = '';
+                document.getElementById('template-keyword').value = '';
+                loadTemplates();
+            } catch (e) {
+                console.error('Failed to create template:', e);
+            }
+        }
+        
+        async function deleteTemplate(id) {
+            if (!confirm('Delete template?')) return;
+            try {
+                await fetch(`${API}/discovery-jobs/templates/${id}`, { method: 'DELETE' });
+                loadTemplates();
+            } catch (e) {
+                console.error('Failed to delete template:', e);
+            }
+        }
+        
+        async function useTemplate(id) {
+            try {
+                await fetch(`${API}/discovery-jobs/templates/${id}/use`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ keyword: 'from-template', region: 'Global' })
+                });
+                alert('Job created from template');
+                loadDashboard();
+            } catch (e) {
+                console.error('Failed to use template:', e);
+            }
+        }
+        
+        function showTab(tab) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            
+            event.target.classList.add('active');
+            document.getElementById(`tab-${tab}`).classList.add('active');
+            
+            if (tab === 'history') loadJobHistory();
+            if (tab === 'companies') loadCompanies();
+            if (tab === 'templates') loadTemplates();
+        }
+        
+        function showCreateJob() {
+            document.getElementById('create-job-modal').classList.add('active');
+        }
+        
+        function showBulkJobModal() {
+            document.getElementById('bulk-job-modal').classList.add('active');
+        }
+        
+        let allCompanies = [];
+        
+        async function showCompaniesModal() {
+            try {
+                const res = await fetch(`${API}/companies?limit=500`);
+                allCompanies = await res.json();
+                document.getElementById('companies-modal').classList.add('active');
+                filterCompanies();
+            } catch (e) {
+                console.error('Failed to load companies:', e);
+            }
+        }
+        
+        function filterCompanies() {
+            const search = document.getElementById('companies-search').value.toLowerCase();
+            const status = document.getElementById('companies-filter').value;
+            
+            const filtered = allCompanies.filter(c => {
+                const matchesSearch = !search || c.domain.toLowerCase().includes(search) || (c.industry && c.industry.toLowerCase().includes(search));
+                const matchesStatus = !status || c.status === status;
+                return matchesSearch && matchesStatus;
+            });
+            
+            const tbody = document.getElementById('companies-modal-list');
+            if (filtered.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No companies found</td></tr>';
+            } else {
+                tbody.innerHTML = filtered.map(c => `
+                    <tr>
+                        <td>${c.domain}</td>
+                        <td>${c.industry || '-'}</td>
+                        <td><span class="badge ${c.status}">${c.status}</span></td>
+                        <td>${c.discovery_score}</td>
+                        <td>${c.created_at ? new Date(c.created_at).toLocaleDateString() : '-'}</td>
+                    </tr>
+                `).join('');
+            }
+        }
+        
+        let allContacts = [];
+        
+        async function showContactsModal(initialFilter = '') {
+            try {
+                const res = await fetch(`${API}/contacts?limit=500`);
+                allContacts = await res.json();
+                if (initialFilter) {
+                    document.getElementById('contacts-filter').value = initialFilter;
+                }
+                document.getElementById('contacts-modal').classList.add('active');
+                filterContacts();
+            } catch (e) {
+                console.error('Failed to load contacts:', e);
+            }
+        }
+        
+        function filterContacts() {
+            const search = document.getElementById('contacts-search').value.toLowerCase();
+            const status = document.getElementById('contacts-filter').value;
+            
+            const filtered = allContacts.filter(c => {
+                const matchesSearch = !search || (c.email && c.email.toLowerCase().includes(search));
+                const matchesStatus = !status || c.verification_status === status;
+                return matchesSearch && matchesStatus;
+            });
+            
+            const tbody = document.getElementById('contacts-modal-list');
+            if (filtered.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No contacts found</td></tr>';
+            } else {
+                tbody.innerHTML = filtered.map(c => `
+                    <tr>
+                        <td style="width: 18%;">${c.email}</td>
+                        <td style="width: 25%;">${c.job_title || '-'}</td>
+                        <td style="width: 18%;"><span class="badge ${c.verification_status}">${c.verification_status}</span></td>
+                        <td style="width: 12%;">${c.is_verified ? 'Yes' : 'No'}</td>
+                        <td style="width: 27%;">${c.created_at ? new Date(c.created_at).toLocaleDateString() : '-'}</td>
+                    </tr>
+                `).join('');
+            }
+        }
+        
+        let allJobs = [];
+        
+        async function showJobsModal(statusFilter = '') {
+            try {
+                allJobs = await (await fetch(`${API}/discovery-jobs?limit=500`)).json();
+                document.getElementById('jobs-modal-title').textContent = statusFilter ? statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1) + ' Jobs' : 'All Jobs';
+                document.getElementById('jobs-modal').classList.add('active');
+                filterJobsModal(statusFilter);
+            } catch (e) {
+                console.error('Failed to load jobs:', e);
+            }
+        }
+        
+        function filterJobsModal(statusFilter = '') {
+            const search = document.getElementById('jobs-search').value.toLowerCase();
+            const status = statusFilter || '';
+            
+            const filtered = allJobs.filter(j => {
+                const matchesSearch = !search || j.keyword.toLowerCase().includes(search);
+                const matchesStatus = !status || j.status === status;
+                return matchesSearch && matchesStatus;
+            });
+            
+            const tbody = document.getElementById('jobs-modal-list');
+            if (filtered.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No jobs found</td></tr>';
+            } else {
+                tbody.innerHTML = filtered.map(j => `
+                    <tr>
+                        <td>${j.id}</td>
+                        <td>${j.keyword}</td>
+                        <td>${j.region}</td>
+                        <td><span class="badge ${j.status}">${j.status}</span></td>
+                        <td>${j.results_count}</td>
+                        <td>${j.created_at ? new Date(j.created_at).toLocaleDateString() : '-'}</td>
+                    </tr>
+                `).join('');
+            }
+        }
+        
+        function closeModal(id) {
+            document.getElementById(id).classList.remove('active');
+        }
+        
+        // Auto-refresh every 10 seconds
+        setInterval(() => {
+            loadDashboard();
+            loadJobHistory();
+            loadCompanies();
+        }, 10000);
+        
+        loadDashboard();
+        loadJobHistory();
+    </script>
+</body>
+</html>

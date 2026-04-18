@@ -2,10 +2,11 @@
 # Run Celery worker for lead generation pipeline
 # Usage: ./run_celery_worker.sh [queue_name]
 
-cd "$(dirname "$0")/04_api"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR/04_api"
 
 # Add project root to PYTHONPATH
-export PYTHONPATH="/home/fisazkido/lead_gen2:$PYTHONPATH"
+export PYTHONPATH="$SCRIPT_DIR:$PYTHONPATH"
 
 # Load environment
 if [ -f .env ]; then
@@ -21,7 +22,8 @@ QUEUE=${1:-discovery,browsing,enrichment,verification}
 echo "Starting Celery worker for queues: $QUEUE"
 echo "Redis broker: $REDIS_URL"
 
-./.venv/bin/celery -A celery_tasks worker \
+# Use .venv from project root
+"$SCRIPT_DIR/.venv/bin/celery" -A celery_tasks worker \
     --loglevel=info \
     --queues=$QUEUE \
     --concurrency=1 \

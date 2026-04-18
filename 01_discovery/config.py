@@ -15,7 +15,7 @@ class Settings:
     """Application settings loaded from environment variables."""
 
     # Database
-    DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://user:password@localhost:5432/leadgen")
+    DATABASE_URL: str = os.getenv("DATABASE_URL")  # REQUIRED - no default
 
     # Discovery settings
     DISCOVERY_POLL_INTERVAL: int = int(os.getenv("DISCOVERY_POLL_INTERVAL", "300"))

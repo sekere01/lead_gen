@@ -1,12 +1,12 @@
 """
 Database configuration for Browsing Service.
+All tables are defined in shared_models and created via Base.metadata.create_all().
 """
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text, Boolean, ForeignKey, event
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
-from datetime import datetime, timezone
 
 from config import settings
-from shared_models import Company, Contact, ExtractedEmail, JobStats, update_job_stats
+from shared_models import Base
 
 engine = create_engine(
     settings.DATABASE_URL,
@@ -34,41 +34,16 @@ def get_db():
         db.close()
 
 
-def init_db():
-    """Initialize database columns if they don't exist."""
+def _ensure_indexes():
+    """Create indexes that SQLAlchemy create_all() may not handle automatically."""
     from sqlalchemy import text
-
     with engine.connect() as conn:
-        conn.execute(text("""
-            ALTER TABLE companies
-            ADD COLUMN IF NOT EXISTS browse_heartbeat TIMESTAMP WITH TIME ZONE
-        """))
-        conn.execute(text("""
-            ALTER TABLE companies
-            ADD COLUMN IF NOT EXISTS has_contact_link BOOLEAN DEFAULT FALSE
-        """))
-        conn.execute(text("""
-            ALTER TABLE companies
-            ADD COLUMN IF NOT EXISTS has_address BOOLEAN DEFAULT FALSE
-        """))
-        conn.execute(text("""
-            ALTER TABLE companies
-            ADD COLUMN IF NOT EXISTS has_social_links BOOLEAN DEFAULT FALSE
-        """))
-        conn.execute(text("""
-            ALTER TABLE companies
-            ADD COLUMN IF NOT EXISTS has_email_on_homepage BOOLEAN DEFAULT FALSE
-        """))
-        conn.execute(text("""
-            ALTER TABLE companies
-            ADD COLUMN IF NOT EXISTS is_parked BOOLEAN DEFAULT FALSE
-        """))
-        conn.execute(text("""
-            ALTER TABLE companies
-            ADD COLUMN IF NOT EXISTS language_match BOOLEAN DEFAULT FALSE
-        """))
-
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_company_browse_heartbeat ON companies(browse_heartbeat)"))
         conn.commit()
 
+
+def init_db():
+    """Initialize database tables from shared_models definitions."""
+    Base.metadata.create_all(engine)
+    _ensure_indexes()
     print("Browsing database columns initialized successfully")

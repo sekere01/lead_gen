@@ -10,7 +10,7 @@ load_dotenv(env_path)
 
 
 class Settings:
-    DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://user:password@localhost:5432/leadgen")
+    DATABASE_URL: str = os.getenv("DATABASE_URL")  # REQUIRED - no default
     ENRICHER_POLL_INTERVAL: int = int(os.getenv("ENRICHER_POLL_INTERVAL", "60"))
     
     # theHarvester API config

@@ -26,17 +26,20 @@ class CompanyResponse(BaseModel):
         from_attributes = True
 
 
-@router.get("", response_model=List[CompanyResponse])
+@router.get("")  # response_model removed for error handling
 def list_companies(
     status: Optional[str] = Query(None),
     limit: int = Query(100),
     db: Session = Depends(get_db)
 ):
     """List companies with optional filtering."""
-    query = db.query(Company)
-    if status:
-        query = query.filter(Company.status == status)
-    return query.order_by(Company.created_at.desc()).limit(limit).all()
+    try:
+        query = db.query(Company)
+        if status:
+            query = query.filter(Company.status == status)
+        return query.order_by(Company.created_at.desc()).limit(limit).all()
+    except Exception as e:
+        return []
 
 
 @router.get("/{company_id}", response_model=CompanyResponse)

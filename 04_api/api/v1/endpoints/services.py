@@ -16,6 +16,7 @@ class ServiceResponse(BaseModel):
     name: str
     status: str
     uptime: Optional[int] = None
+    start_time: Optional[float] = None
     pid: Optional[int] = None
 
 
@@ -41,6 +42,7 @@ def get_services_status():
             name=s.name,
             status=s.status,
             uptime=s.uptime,
+            start_time=s.start_time,
             pid=s.pid
         )
         for s in services
@@ -73,16 +75,49 @@ def restart_service(service_name: str):
 
 
 @router.get("/logs")
-def get_logs(limit: int = 50):
-    """Get recent pipeline logs."""
-    log_file = "/home/fisazkido/lead_gen2/pipeline.log"
+def get_logs(limit: int = 100):
+    """Get recent pipeline logs from all services."""
+    import os
+    all_logs = []
+    
+    service_names = ['discovery', 'browsing', 'enrichment', 'verification']
+    for svc in service_names:
+        log_file = f"/tmp/{svc}.out"
+        try:
+            if os.path.exists(log_file):
+                with open(log_file, "r") as f:
+                    lines = f.readlines()
+                    for line in lines[-limit:]:
+                        all_logs.append(f"[{svc}] {line.strip()}")
+        except Exception:
+            pass
+    
+    # Also check old pipeline.log
+    try:
+        with open("/home/fisazkido/lead_gen2/pipeline.log", "r") as f:
+            for line in f.readlines()[-limit:]:
+                all_logs.append(f"[legacy] {line.strip()}")
+    except Exception:
+        pass
+    
+    # Return last 'limit' entries (newest first by reversing)
+    all_logs = list(reversed(all_logs))[-limit:]
+    all_logs = list(reversed(all_logs))
+    
+    return {"logs": all_logs, "count": len(all_logs)}
+
+
+@router.get("/{service_name}/logs")
+def get_service_logs(service_name: str, limit: int = 200):
+    """Get logs for a specific service."""
+    log_file = f"/tmp/{service_name}.out"
     try:
         with open(log_file, "r") as f:
             lines = f.readlines()
         logs = [line.strip() for line in lines[-limit:]]
-        return {"logs": logs, "count": len(logs)}
+        return {"logs": logs, "count": len(logs), "service": service_name}
     except FileNotFoundError:
-        return {"logs": [], "count": 0}
+        return {"logs": [f"No logs yet for {service_name}"], "count": 0, "service": service_name}
 
 
 @router.post("/refresh")

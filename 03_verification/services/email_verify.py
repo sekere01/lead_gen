@@ -19,7 +19,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-EMAIL_REGEX = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
+from utils.email_utils import EMAIL_REGEX
 
 
 def validate_syntax(email: str) -> Tuple[bool, Optional[str]]:

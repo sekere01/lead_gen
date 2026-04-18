@@ -1,16 +1,29 @@
 """
 Database configuration for Enrichment Service.
 """
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text, Boolean, ForeignKey
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy import create_engine, Column, Integer, String, Text, Boolean, ForeignKey, event
 from sqlalchemy.orm import sessionmaker
-from datetime import datetime
+from datetime import datetime, timezone
 
 from config import settings
+from shared_models import Company, Contact, ExtractedEmail, JobStats, update_job_stats
 
-engine = create_engine(settings.DATABASE_URL, pool_pre_ping=True)
+engine = create_engine(
+    settings.DATABASE_URL,
+    pool_pre_ping=True,
+    pool_size=1,
+    max_overflow=1,
+    pool_recycle=300,
+    pool_timeout=5
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
+
+
+@event.listens_for(engine, "connect")
+def set_statement_timeout(dbapi_conn, connection_record):
+    cursor = dbapi_conn.cursor()
+    cursor.execute("SET statement_timeout = '30000'")
+    cursor.close()
 
 
 def get_db():
@@ -24,7 +37,7 @@ def get_db():
 def init_db():
     """Initialize database tables if they don't exist."""
     from sqlalchemy import text
-    
+
     with engine.connect() as conn:
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS companies (
@@ -51,21 +64,20 @@ def init_db():
                 updated_at TIMESTAMP WITH TIME ZONE
             )
         """))
-        
-        # Migration: Add enrichment columns if they don't exist (for existing tables)
+
         conn.execute(text("""
-            ALTER TABLE companies 
+            ALTER TABLE companies
             ADD COLUMN IF NOT EXISTS retry_count INTEGER DEFAULT 0
         """))
         conn.execute(text("""
-            ALTER TABLE companies 
+            ALTER TABLE companies
             ADD COLUMN IF NOT EXISTS failure_reason VARCHAR(500)
         """))
         conn.execute(text("""
-            ALTER TABLE companies 
+            ALTER TABLE companies
             ADD COLUMN IF NOT EXISTS last_heartbeat TIMESTAMP WITH TIME ZONE
         """))
-        
+
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS contacts (
                 id SERIAL PRIMARY KEY,
@@ -88,7 +100,7 @@ def init_db():
                 updated_at TIMESTAMP WITH TIME ZONE
             )
         """))
-        
+
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS extracted_emails (
                 id SERIAL PRIMARY KEY,
@@ -99,74 +111,14 @@ def init_db():
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
             )
         """))
-        
+
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_company_status ON companies(status)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_company_discovery_score ON companies(discovery_score)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_company_heartbeat ON companies(last_heartbeat)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_company_retry ON companies(retry_count)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_contact_company_id ON contacts(company_id)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_contact_verification_status ON contacts(verification_status)"))
-        
+
         conn.commit()
-    
+
     print("Enrichment database tables initialized successfully")
-
-
-class Company(Base):
-    __tablename__ = "companies"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(255), nullable=False)
-    domain = Column(String(255), nullable=False, unique=True)
-    description = Column(Text)
-    industry = Column(String(100))
-    employee_count = Column(Integer)
-    founded_year = Column(Integer)
-    headquarters_location = Column(String(255))
-    website_url = Column(String(500))
-    linkedin_url = Column(String(500))
-    twitter_url = Column(String(500))
-    facebook_url = Column(String(500))
-    is_active = Column(Boolean, default=True)
-    discovery_score = Column(Integer, default=0)
-    lead_source = Column(String(100))
-    status = Column(String(50), default='discovered')
-    retry_count = Column(Integer, default=0)
-    failure_reason = Column(String(500))
-    last_heartbeat = Column(DateTime)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime)
-
-
-class Contact(Base):
-    __tablename__ = "contacts"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    first_name = Column(String(100), nullable=False)
-    last_name = Column(String(100), nullable=False)
-    email = Column(String(255), nullable=False, unique=True)
-    job_title = Column(String(255))
-    department = Column(String(100))
-    phone_number = Column(String(50))
-    linkedin_profile = Column(String(500))
-    twitter_handle = Column(String(100))
-    is_verified = Column(Boolean, default=False)
-    verification_date = Column(DateTime)
-    verification_status = Column(String(50))
-    is_catch_all = Column(Boolean, default=False)
-    needs_retry = Column(Boolean, default=False)
-    source_url = Column(Text)
-    company_id = Column(Integer, ForeignKey("companies.id"), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime)
-
-
-class ExtractedEmail(Base):
-    __tablename__ = "extracted_emails"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    email = Column(String(255), nullable=False)
-    email_type = Column(String(50))
-    source_url = Column(Text)
-    company_id = Column(Integer, ForeignKey("companies.id"))
-    created_at = Column(DateTime, default=datetime.utcnow)

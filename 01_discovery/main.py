@@ -6,11 +6,12 @@ Entry: python main.py
 import time
 import logging
 import traceback
-from datetime import datetime, timedelta
+import os
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any
 
-from database import SessionLocal, init_db
-from database import DiscoveryJob, Company
+from database import SessionLocal, init_db, DiscoveryJob, Company
+from shared_models import update_job_stats
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy import text
 from config import settings
@@ -204,6 +205,10 @@ def process_job(job, db) -> bool:
         job.last_error = None
         db.commit()
 
+        
+        update_job_stats(db, 'discovery', 'processing', -1, job.id)
+        update_job_stats(db, 'discovery', 'completed', 1, job.id)
+
         logger.info(f"Job {job.id} completed: {saved_count} companies saved")
         return True
 
@@ -212,14 +217,19 @@ def process_job(job, db) -> bool:
         job.retry_count = current_retry
         job.last_error = traceback.format_exc()
 
+        
         if current_retry >= MAX_JOB_RETRIES:
             job.status = 'failed'
             job.error_message = f"Max retries ({MAX_JOB_RETRIES}) exceeded: {str(e)[:450]}"
             logger.error(f"Job {job.id} permanently failed after {current_retry} attempts: {e}")
+            update_job_stats(db, 'discovery', 'processing', -1, job.id)
+            update_job_stats(db, 'discovery', 'failed', 1, job.id)
         else:
             job.status = 'pending'
             job.error_message = f"Attempt {current_retry}/{MAX_JOB_RETRIES} failed: {str(e)[:450]}"
             logger.warning(f"Job {job.id} failed (attempt {current_retry}/{MAX_JOB_RETRIES}): {e}")
+            update_job_stats(db, 'discovery', 'processing', -1, job.id)
+            update_job_stats(db, 'discovery', 'pending', 1, job.id)
 
         db.commit()
         return False
@@ -239,6 +249,7 @@ def watchdog_reset_stuck_jobs(db) -> int:
     ).all()
 
     reset_count = 0
+    
     for job in stuck_jobs:
         old_retry = job.retry_count or 0
         job.retry_count = old_retry + 1
@@ -247,10 +258,14 @@ def watchdog_reset_stuck_jobs(db) -> int:
             job.status = 'failed'
             job.error_message = f"Watchdog: stuck for >{WATCHDOG_TIMEOUT_MINUTES}min, max retries exceeded"
             logger.error(f"Job {job.id} permanently failed: watchdog timeout after {job.retry_count} retries")
+            update_job_stats(db, 'discovery', 'processing', -1, job.id)
+            update_job_stats(db, 'discovery', 'failed', 1, job.id)
         else:
             job.status = 'pending'
             job.error_message = f"Watchdog: stuck for >{WATCHDOG_TIMEOUT_MINUTES}min, reset to pending"
             logger.warning(f"Job {job.id} reset by watchdog: was stuck, retry {job.retry_count}/{MAX_JOB_RETRIES}")
+            update_job_stats(db, 'discovery', 'processing', -1, job.id)
+            update_job_stats(db, 'discovery', 'pending', 1, job.id)
 
         reset_count += 1
 
@@ -261,11 +276,45 @@ def watchdog_reset_stuck_jobs(db) -> int:
     return reset_count
 
 
+def write_metrics(db):
+    """Write service metrics for graphing via API."""
+    try:
+        from database import Company, DiscoveryJob
+        
+        # Get current stats
+        companies_found = db.query(Company).count()
+        jobs_pending = db.query(DiscoveryJob).filter(DiscoveryJob.status == 'pending').count()
+        jobs_active = db.query(DiscoveryJob).filter(DiscoveryJob.status == 'processing').count()
+        
+        # Write metrics via API call
+        import httpx
+        api_base = os.getenv('API_BASE', 'http://localhost:8000/api/v1')
+        
+        metrics = [
+            ('discovery', 'companies_found', companies_found),
+            ('discovery', 'jobs_pending', jobs_pending),
+            ('discovery', 'jobs_active', jobs_active),
+        ]
+        
+        for svc, metric, value in metrics:
+            try:
+                httpx.post(f"{api_base}/dashboard/metrics", 
+                          params={'service': svc, 'metric': metric, 'value': value},
+                          timeout=5.0)
+            except Exception as e:
+                logger.debug(f"Failed to write metric {metric}: {e}")
+                
+    except Exception as e:
+        logger.warning(f"Failed to write metrics: {e}")
+
+
 def run_discoverer():
     """Main watcher loop."""
     logger.info(f"Discoverer service started (poll interval: {POLL_INTERVAL}s, max retries: {MAX_JOB_RETRIES}, watchdog timeout: {WATCHDOG_TIMEOUT_MINUTES}min)")
     logger.info(f"Loaded config: {get_config_summary()}")
-
+    
+    metrics_counter = 0
+    
     while True:
         db = SessionLocal()
         try:
@@ -274,7 +323,7 @@ def run_discoverer():
             
             # Watchdog: reset stuck jobs before picking new job
             watchdog_reset_stuck_jobs(db)
-
+            
             job = db.query(DiscoveryJob).filter(
                 DiscoveryJob.status == 'pending',
                 DiscoveryJob.retry_count < MAX_JOB_RETRIES
@@ -282,9 +331,22 @@ def run_discoverer():
 
             if job:
                 logger.info(f"Found pending job: {job.id} - '{job.keyword}' (attempt {job.retry_count + 1}/{MAX_JOB_RETRIES})")
+                
+                update_job_stats(db, 'discovery', 'pending', -1, job.id)
+                job.status = 'processing'
+                job.last_run = datetime.now()
+                job.last_heartbeat = datetime.now()
+                db.commit()
+                update_job_stats(db, 'discovery', 'processing', 1, job.id)
                 process_job(job, db)
             else:
                 logger.debug("No pending jobs, waiting...")
+
+            # Write metrics every 60 seconds
+            metrics_counter += POLL_INTERVAL
+            if metrics_counter >= 60:
+                write_metrics(db)
+                metrics_counter = 0
 
             time.sleep(POLL_INTERVAL)
 

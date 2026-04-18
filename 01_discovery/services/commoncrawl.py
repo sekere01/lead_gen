@@ -41,11 +41,9 @@ def _get_latest_index() -> str:
                 _latest_index = indexes[0]['id']
                 logger.info(f"Using latest CommonCrawl index: {_latest_index}")
                 return _latest_index
-    except Exception as e:
-        logger.warning(f"Failed to fetch latest index, using fallback: {e}")
-    
-    # Fallback to a recent index
-    return "CC-MAIN-2025-06-index"
+except Exception as e:
+    logger.warning(f"Failed to fetch latest index: {e}")
+    raise ValueError("Could not fetch CommonCrawl index — set enabled: false in config to skip")
 
 
 def _get_tld_for_region(region: str, config: dict) -> List[str]:
@@ -126,11 +124,15 @@ def discover_commoncrawl(keyword: str, region: str = "", max_results: int = 50) 
     # Get TLD(s) for region
     tlds = _get_tld_for_region(region, config)
     
-    # Get latest index
-    index = _get_latest_index()
-    base_url = f"https://index.commoncrawl.org/{index}"
-    
-    try:
+# Get latest index
+  try:
+      index = _get_latest_index()
+  except ValueError:
+      logger.warning("CommonCrawl index fetch failed — skipping CommonCrawl discovery")
+      return results
+  base_url = f"https://index.commoncrawl.org/{index}"
+
+  try:
         for tld in tlds:
             if len(results) >= max_results:
                 break

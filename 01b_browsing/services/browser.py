@@ -1,10 +1,40 @@
 """Browser service - httpx + Playwright logic."""
 import logging
 import httpx
+import re
 from typing import Tuple, Optional
+from contextlib import contextmanager
 from config import settings
 
 logger = logging.getLogger(__name__)
+
+EMAIL_REGEX = re.compile(
+    r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+)
+
+
+class BrowserContext:
+    """Context manager for Playwright browser lifecycle — ensures cleanup on any exception."""
+
+    def __init__(self, timeout_playwright: int = 30):
+        self.timeout = timeout_playwright
+        self.playwright = None
+        self.browser = None
+
+    def __enter__(self):
+        from playwright.sync_api import sync_playwright
+        self.playwright = sync_playwright().__enter__()
+        self.browser = self.playwright.chromium.launch(headless=True)
+        return self
+
+    def __exit__(self, *args):
+        if self.browser:
+            self.browser.close()
+        if self.playwright:
+            self.playwright.__exit__(*args)
+
+    def new_page(self):
+        return self.browser.new_page()
 
 HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
@@ -73,27 +103,23 @@ def fetch_with_playwright(domain: str) -> str:
         f"https://{domain}",
         f"http://{domain}",
     ]
-    
+
     for url in urls:
         try:
-            from playwright.sync_api import sync_playwright
-            
-            with sync_playwright() as p:
-                browser = p.chromium.launch(headless=True)
-                page = browser.new_page()
+            with BrowserContext(timeout_playwright=settings.BROWSING_TIMEOUT_PLAYWRIGHT) as ctx:
+                page = ctx.new_page()
                 page.goto(url, timeout=settings.BROWSING_TIMEOUT_PLAYWRIGHT * 1000)
-                page.wait_for_load_state('networkidle', timeout=settings.BROWSING_TIMEOUT_PLAYWRIGHT * 1000)
-                
+                page.wait_for_load_state(
+                    'networkidle', timeout=settings.BROWSING_TIMEOUT_PLAYWRIGHT * 1000
+                )
                 html = page.content()
-                browser.close()
-                
-                logger.debug(f"Playwright fetched {url}")
-                return html
-                
+            logger.debug(f"Playwright fetched {url}")
+            return html
+
         except Exception as e:
             logger.debug(f"Playwright error for {url}: {e}")
             continue
-    
+
     return ""
 
 

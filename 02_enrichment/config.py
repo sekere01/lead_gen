@@ -12,14 +12,16 @@ load_dotenv(env_path)
 class Settings:
     DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://user:password@localhost:5432/leadgen")
     ENRICHER_POLL_INTERVAL: int = int(os.getenv("ENRICHER_POLL_INTERVAL", "60"))
-    MAX_CONCURRENT_CONTAINERS: int = int(os.getenv("MAX_CONCURRENT_CONTAINERS", "1"))
-    HARVESTER_LIMIT: int = int(os.getenv("HARVESTER_LIMIT", "200"))
-    DOCKER_SOCKET: str = os.getenv("DOCKER_SOCKET", "/var/run/docker.sock")
+    
+    # theHarvester API config
+    HARVESTER_API_URL: str = os.getenv("HARVESTER_API_URL", "http://localhost:5000")
+    HARVESTER_SOURCES: str = os.getenv("HARVESTER_SOURCES", "duckduckgo,bing")
+    HARVESTER_LIMIT: int = int(os.getenv("HARVESTER_LIMIT", "500"))
+    
     OUTPUT_DIR: str = os.getenv("OUTPUT_DIR", "/tmp/leadgen_harvester")
     
     # Enrichment reliability config
     ENRICHMENT_TIMEOUT_DOMAIN: int = int(os.getenv("ENRICHMENT_TIMEOUT_DOMAIN", "60"))
-    ENRICHMENT_TIMEOUT_DOCKER: int = int(os.getenv("ENRICHMENT_TIMEOUT_DOCKER", "120"))
     ENRICHMENT_MAX_RETRIES: int = int(os.getenv("ENRICHMENT_MAX_RETRIES", "3"))
     ENRICHMENT_WATCHDOG_MINUTES: int = int(os.getenv("ENRICHMENT_WATCHDOG_MINUTES", "15"))
     TARGET_EMAILS_PER_DOMAIN: int = int(os.getenv("TARGET_EMAILS_PER_DOMAIN", "10"))

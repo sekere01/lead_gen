@@ -1,66 +1,87 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Lead Gen Dashboard</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: 'Inter', sans-serif; background: #f8fafc; color: #1e293b; line-height: 1.5; }
+        :root {
+            --bg-primary: #f8fafc;
+            --bg-secondary: #fff;
+            --bg-tertiary: #f1f5f9;
+            --text-primary: #1e293b;
+            --text-secondary: #64748b;
+            --border-color: #e2e8f0;
+            --accent: #3b82f6;
+            --accent-hover: #2563eb;
+            --success: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+        }
         
-        .header { background: #fff; border-bottom: 1px solid #e2e8f0; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; }
+        [data-theme="dark"] {
+            --bg-primary: #0f172a;
+            --bg-secondary: #1e293b;
+            --bg-tertiary: #334155;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --border-color: #334155;
+            --accent: #60a5fa;
+            --accent-hover: #3b82f6;
+            --success: #34d399;
+            --danger: #f87171;
+            --warning: #fbbf24;
+        }
+        
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Inter', sans-serif; background: var(--bg-primary); color: var(--text-primary); line-height: 1.5; padding-top: 70px; }
+        
+        .header { position: fixed; top: 0; left: 0; right: 0; z-index: 100; background: var(--bg-secondary); border-bottom: 1px solid var(--border-color); padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; }
         .header h1 { font-size: 20px; font-weight: 600; }
         
         .container { max-width: 1400px; margin: 0 auto; padding: 24px; }
         
         .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
-        .stat-card { background: #fff; border-radius: 12px; padding: 20px; border: 1px solid #e2e8f0; }
-        .stat-card h3 { font-size: 13px; color: #64748b; font-weight: 500; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
-        .stat-card .value { font-size: 32px; font-weight: 700; color: #0f172a; }
-        .stat-card .value.pending { color: #f59e0b; }
-        .stat-card .value.completed { color: #10b981; }
-        .stat-card .value.failed { color: #ef4444; }
+        .stat-card { background: var(--bg-secondary); border-radius: 12px; padding: 20px; border: 1px solid var(--border-color); }
+        .stat-card h3 { font-size: 13px; color: var(--text-secondary); font-weight: 500; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .stat-card .value { font-size: 32px; font-weight: 700; color: var(--text-primary); }
+        .stat-card .value.pending { color: var(--warning); }
+        .stat-card .value.completed { color: var(--success); }
+        .stat-card .value.failed { color: var(--danger); }
         
         .panels { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
         @media (max-width: 1024px) { .panels { grid-template-columns: 1fr; } }
         
-        .panel { background: #fff; border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden; }
-        .panel-header { padding: 16px 20px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; }
+        .panel { background: var(--bg-secondary); border-radius: 12px; border: 1px solid var(--border-color); overflow: hidden; }
+        .panel-header { padding: 16px 20px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; }
         .panel-header h2 { font-size: 16px; font-weight: 600; }
         .panel-body { padding: 20px; }
         
-        .services-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
-        .service-item { padding: 16px; background: #f8fafc; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; }
-        .service-item .name { font-weight: 500; }
-        .service-item .status { display: flex; align-items: center; gap: 6px; font-size: 13px; }
-        .status-dot { width: 8px; height: 8px; border-radius: 50%; }
-        .status-dot.running { background: #10b981; }
-        .status-dot.stopped { background: #94a3b8; }
-        
         .btn { padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 500; border: none; cursor: pointer; transition: all 0.2s; }
-        .btn-primary { background: #3b82f6; color: #fff; }
-        .btn-primary:hover { background: #2563eb; }
-        .btn-success { background: #10b981; color: #fff; }
+        .btn-primary { background: var(--accent); color: #fff; }
+        .btn-primary:hover { background: var(--accent-hover); }
+        .btn-success { background: var(--success); color: #fff; }
         .btn-success:hover { background: #059669; }
-        .btn-danger { background: #ef4444; color: #fff; }
+        .btn-danger { background: var(--danger); color: #fff; }
         .btn-danger:hover { background: #dc2626; }
-        .btn-secondary { background: #e2e8f0; color: #475569; }
-        .btn-secondary:hover { background: #cbd5e1; }
+        .btn-secondary { background: var(--border-color); color: var(--text-secondary); }
+        .btn-secondary:hover { background: var(--bg-tertiary); }
         .btn-sm { padding: 6px 12px; font-size: 12px; }
         
         .form-group { margin-bottom: 16px; }
-        .form-group label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; color: #475569; }
-        .form-group input, .form-group textarea, .form-group select { width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; }
-        .form-group input:focus, .form-group textarea:focus, .form-group select:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
+        .form-group label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; color: var(--text-secondary); }
+        .form-group input, .form-group textarea, .form-group select { width: 100%; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 14px; background: var(--bg-secondary); color: var(--text-primary); }
+        .form-group input:focus, .form-group textarea:focus, .form-group select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
         
         .table { width: 100%; border-collapse: collapse; }
-        .table th, .table td { padding: 12px 16px; text-align: left; border-bottom: 1px solid #e2e8f0; }
+        .table th, .table td { padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--border-color); }
         .modal .table { width: 100%; }
         .modal .table th, .modal .table td { padding: 4px 8px; font-size: 12px; }
-        .table th { font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; background: #f8fafc; }
+        .table th { font-size: 12px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; background: var(--bg-primary); }
         .table td { font-size: 14px; }
-        .table tr:hover { background: #f8fafc; }
+        .table tr:hover { background: var(--bg-primary); }
         
         .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 500; }
         .badge.pending { background: #fef3c7; color: #92400e; }
@@ -69,14 +90,23 @@
         .badge.failed { background: #fee2e2; color: #991b1b; }
         
         .queue-list { max-height: 300px; overflow-y: auto; }
-        .queue-item { padding: 12px 16px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; }
-        .queue-item:last-child { border-bottom: none; }
-        .queue-item .keyword { font-weight: 500; }
-        .queue-item .meta { font-size: 12px; color: #64748b; }
+        .queue-list::-webkit-scrollbar { width: 5px; }
+        .queue-list::-webkit-scrollbar-track { background: var(--bg-primary); border-radius: 3px; }
+        .queue-list::-webkit-scrollbar-thumb { background: #64748b; border-radius: 3px; }
+        .queue-list::-webkit-scrollbar-thumb:hover { background: #475569; }
         
-        .tabs { display: flex; border-bottom: 1px solid #e2e8f0; }
-        .tab { padding: 12px 20px; font-size: 14px; font-weight: 500; color: #64748b; cursor: pointer; border-bottom: 2px solid transparent; display: flex; align-items: center; gap: 8px; }
-        .tab.active { color: #3b82f6; border-bottom-color: #3b82f6; }
+        .styled-scroll::-webkit-scrollbar { width: 6px; }
+        .styled-scroll::-webkit-scrollbar-track { background: var(--bg-primary); border-radius: 3px; }
+        .styled-scroll::-webkit-scrollbar-thumb { background: #64748b; border-radius: 3px; }
+        .styled-scroll::-webkit-scrollbar-thumb:hover { background: #475569; }
+        .queue-item { padding: 10px 12px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; }
+        .queue-item:last-child { border-bottom: none; }
+        .queue-item .keyword { font-weight: 500; font-size: 12px; }
+        .queue-item .meta { font-size: 11px; color: var(--text-secondary); }
+        
+        .tabs { display: flex; border-bottom: 1px solid var(--border-color); }
+        .tab { padding: 12px 20px; font-size: 14px; font-weight: 500; color: var(--text-secondary); cursor: pointer; border-bottom: 2px solid transparent; display: flex; align-items: center; gap: 8px; }
+        .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
         .tab span { cursor: pointer; }
         
         .tab-content { display: none; }
@@ -84,23 +114,138 @@
         
         .modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 1000; }
         .modal.active { display: flex; }
-        .modal-content { background: #fff; border-radius: 12px; width: 90%; max-width: 500px; max-height: 90vh; overflow-y: auto; }
-        .modal-header { padding: 20px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; }
+        .modal-content { background: var(--bg-secondary); border-radius: 12px; width: 90%; max-width: 500px; max-height: 90vh; overflow-y: auto; }
+        .modal-content::-webkit-scrollbar { width: 6px; }
+        .modal-content::-webkit-scrollbar-track { background: var(--bg-primary); border-radius: 3px; }
+        .modal-content::-webkit-scrollbar-thumb { background: #64748b; border-radius: 3px; }
+        .modal-content::-webkit-scrollbar-thumb:hover { background: #475569; }
+        .modal-header { padding: 16px 20px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; }
+        .modal-header button { background: none; border: none; font-size: 24px; color: var(--text-secondary); cursor: pointer; padding: 0; line-height: 1; }
+        .modal-header button:hover { color: var(--text-primary); }
         .modal-body { padding: 20px; }
         
-        .logs-container { background: #1e293b; color: #e2e8f0; padding: 16px; border-radius: 8px; font-family: monospace; font-size: 12px; max-height: 400px; overflow-y: auto; }
+        .logs-container { background: var(--bg-primary); color: var(--text-primary); padding: 16px; border-radius: 8px; font-family: monospace; font-size: 12px; max-height: 400px; overflow-y: auto; border: 1px solid var(--border-color); }
         .log-line { margin-bottom: 4px; }
-        .log-ts { color: #64748b; }
+        .log-ts { color: var(--text-secondary); }
         
-        .empty-state { text-align: center; padding: 40px; color: #64748b; }
+        .empty-state { text-align: center; padding: 40px; color: var(--text-secondary); }
+        
+        .pipeline-container { background: #0f1117; border-radius: 12px; padding: 32px; margin-bottom: 24px; overflow-x: auto; }
+        
+        .pipeline-map { display: flex; align-items: center; justify-content: center; gap: 0; }
+        
+        @media (max-width: 900px) {
+            .pipeline-container { padding: 16px; }
+            .pipeline-node { width: 140px; padding: 12px; }
+            .pipeline-node-name { font-size: 11px; }
+            .pipeline-node-stats { font-size: 9px; }
+            .pipeline-line { width: 30px; }
+        }
+        
+        @media (max-width: 600px) {
+            .pipeline-map { flex-direction: column; gap: 12px; }
+            .pipeline-node { width: 100%; max-width: 180px; }
+            .pipeline-connector { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; }
+            .pipeline-connector::after { content: '↓'; color: #3b82f6; font-size: 18px; }
+            .pipeline-line { display: none; }
+        }
+        .pipeline-node { 
+            width: 180px; padding: 16px 12px; 
+            background: linear-gradient(145deg, #1a1d24, #16181e); border: 2px solid #2a2d3a; 
+            border-radius: 10px; color: #e2e8f0; 
+            position: relative; flex-shrink: 0;
+            text-align: center;
+        }
+        .pipeline-node.running { border-color: #3b82f6; box-shadow: 0 0 20px rgba(59,130,246,0.4), inset 0 0 20px rgba(59,130,246,0.05); }
+        .pipeline-node.stopped { opacity: 0.5; border-color: #2a2d3a; }
+        
+        .pipeline-node-name { 
+            font-size: 13px; font-weight: 700; letter-spacing: 1px; 
+            text-transform: uppercase; margin-bottom: 8px;
+        }
+        
+        .pipeline-node-divider { 
+            height: 1px; background: linear-gradient(90deg, transparent, #334155, transparent); 
+            margin: 8px 0;
+        }
+        
+        .pipeline-node-stats { 
+            display: grid; grid-template-columns: 1fr 1fr; gap: 6px; 
+            font-size: 10px; 
+        }
+        .pipeline-node-stats .stat-label { color: #64748b; font-size: 9px; text-transform: uppercase; }
+        .pipeline-node-stats .stat-value { color: #e2e8f0; font-weight: 700; font-size: 12px; }
+        
+        .pipeline-node-queue { 
+            margin-top: 8px; padding: 4px 10px; border-radius: 20px; 
+            display: inline-block; font-size: 10px; font-weight: 600;
+        }
+        .pipeline-node-queue.high { background: rgba(239,68,68,0.2); color: #ef4444; }
+        .pipeline-node-queue.medium { background: rgba(245,158,11,0.2); color: #f59e0b; }
+        .pipeline-node-queue.low { background: rgba(16,185,129,0.2); color: #10b981; }
+        
+        .pipeline-node-stats .queue-label { text-align: center; margin-top: 4px; font-size: 10px; color: #64748b; }
+        
+        .node-toggle {
+            margin-top: 10px;
+            padding: 4px 8px;
+            font-size: 10px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            border-top: 1px solid var(--border-color);
+            padding-top: 8px;
+        }
+        .node-toggle:hover { color: var(--accent); }
+        
+        .sub-nodes {
+            display: none;
+            margin-top: 8px;
+            padding: 8px;
+            background: rgba(0,0,0,0.2);
+            border-radius: 6px;
+            font-size: 9px;
+        }
+        .sub-nodes.expanded { display: block; }
+        .sub-node { display: flex; justify-content: space-between; padding: 2px 0; }
+        .sub-label { color: var(--text-secondary); }
+        
+        .pipeline-connector { 
+            display: flex; align-items: center; 
+            position: relative; flex-shrink: 0;
+        }
+        .pipeline-line { 
+            width: 40px; height: 2px; 
+            background: #3b82f6; position: relative; overflow: visible;
+            border-radius: 2px;
+        }
+        .pipeline-line.stopped { background: #334155; }
+        .pipeline-line-dot {
+            width: 5px; height: 5px; background: #3b82f6;
+            border-radius: 50%; position: absolute;
+            animation: flowRight 1.2s linear infinite;
+            box-shadow: 0 0 6px #3b82f6;
+            top: -1.5px;
+        }
+        .pipeline-line-dot:nth-child(2) { animation-delay: 0.6s; }
+        .pipeline-line.stopped .pipeline-line-dot { display: none; }
+        
+        .pipeline-source { font-size: 10px; color: #64748b; margin-top: 4px; }
+        .pipeline-source.active { color: #10b981; }
+        .pipeline-source.inactive { color: #64748b; }
+        
+        @keyframes flowRight {
+            0% { left: 0%; opacity: 0; }
+            30% { opacity: 1; }
+            70% { opacity: 1; }
+            100% { left: 100%; opacity: 0; }
+        }
     </style>
 </head>
 <body>
     <div class="header">
         <h1>Lead Gen Pipeline Dashboard</h1>
-        <div>
-            <button class="btn btn-secondary" onclick="showTab('jobs')">Jobs</button>
-            <button class="btn btn-secondary" onclick="showTab('templates')">Templates</button>
+        <div style="display: flex; gap: 8px; align-items: center;">
+            <button class="btn btn-sm" id="theme-toggle" onclick="toggleTheme()">🌙</button>
             <button class="btn btn-secondary" onclick="viewLogs()">Logs</button>
         </div>
     </div>
@@ -131,16 +276,33 @@
                 <h3>Failed</h3>
                 <div class="value failed" id="failed-jobs">-</div>
             </div>
+</div>
+        
+        <div class="pipeline-container" id="pipeline">
+            <div class="pipeline-map" id="pipeline-map" style="justify-content: center;"></div>
         </div>
         
-        <div class="panels">
+<div class="panels">
             <div class="panel">
                 <div class="panel-header">
-                    <h2>Services</h2>
-                    <button class="btn btn-sm btn-secondary" onclick="refreshServices()">Refresh</button>
+                    <h2>Service Metrics</h2>
+                    <div style="display: flex; gap: 8px;">
+                        <button class="btn btn-sm" id="btn-live" onclick="setMetricsWindow('5m')">5m</button>
+                        <button class="btn btn-sm btn-secondary" id="btn-1h" onclick="setMetricsWindow('1h')">1h</button>
+                        <button class="btn btn-sm btn-secondary" id="btn-24h" onclick="setMetricsWindow('24h')">24h</button>
+                    </div>
                 </div>
                 <div class="panel-body">
-                    <div class="services-grid" id="services"></div>
+                    <div style="display: flex; gap: 16px; margin-bottom: 16px; flex-wrap: wrap;">
+                        <span id="svc-discovery" style="cursor:pointer;padding:4px 8px;color:#3b82f6;border-bottom:2px solid #3b82f6" onclick="selectService('discovery')">Discovery</span>
+                        <span id="svc-browsing" style="cursor:pointer;padding:4px 8px;color:#64748b" onclick="selectService('browsing')">Browsing</span>
+                        <span id="svc-enrichment" style="cursor:pointer;padding:4px 8px;color:#64748b" onclick="selectService('enrichment')">Enrichment</span>
+                        <span id="svc-verification" style="cursor:pointer;padding:4px 8px;color:#64748b" onclick="selectService('verification')">Verification</span>
+                        <span id="svc-all" style="cursor:pointer;padding:4px 8px;color:#64748b" onclick="selectService('all')">All</span>
+                    </div>
+                    <div style="height: 250px; position: relative;">
+                        <canvas id="metricsChart"></canvas>
+                    </div>
                 </div>
             </div>
             
@@ -148,12 +310,23 @@
                 <div class="panel-header">
                     <h2>Job Queue</h2>
                     <div style="display: flex; gap: 8px;">
-                        <button class="btn btn-sm btn-secondary" onclick="showBulkJobModal()">Bulk Create</button>
-                        <button class="btn btn-sm btn-primary" onclick="showCreateJob()">+ New Job</button>
+                        <button class="btn btn-sm btn-secondary" onclick="showBulkJobModal()">Bulk</button>
+                        <button class="btn btn-sm btn-primary" onclick="showCreateJob()">+ New</button>
                     </div>
                 </div>
-                <div class="panel-body">
-                    <div class="queue-list" id="job-queue"></div>
+                <div class="panel-body" style="padding: 0; display: flex;">
+                    <div style="flex: 1; border-right: 1px solid #e2e8f0;">
+                        <div style="padding: 12px 16px; border-bottom: 1px solid #e2e8f0;">
+                            <strong style="color: #10b981;">Recently Completed</strong>
+                        </div>
+                        <div class="queue-list" id="completed-queue"></div>
+                    </div>
+                    <div style="flex: 1;">
+                        <div style="padding: 12px 16px; border-bottom: 1px solid #e2e8f0;">
+                            <strong style="color: #3b82f6;">Active Jobs</strong>
+                        </div>
+                        <div class="queue-list" id="active-queue"></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -211,6 +384,26 @@
         </div>
     </div>
     
+    <div class="modal" id="service-modal">
+        <div class="modal-content" style="max-width: 400px;">
+            <div class="modal-header">
+                <h2 id="service-modal-title">Service</h2>
+                <button onclick="closeModal('service-modal')">&times;</button>
+            </div>
+            <div class="modal-body" style="text-align: center;">
+                <div id="service-status-icon" style="font-size: 48px; margin-bottom: 16px;"></div>
+                <div id="service-status-text" style="font-size: 18px; font-weight: 600; margin-bottom: 20px;"></div>
+                <div id="service-uptime" style="color: #64748b; margin-bottom: 24px;"></div>
+                <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
+                    <button class="btn btn-success" id="btn-start" onclick="serviceAction('start', this)">Start</button>
+                    <button class="btn btn-danger" id="btn-stop" onclick="serviceAction('stop', this)">Stop</button>
+                    <button class="btn btn-primary" id="btn-restart" onclick="serviceAction('restart', this)">Restart</button>
+                </div>
+                <div id="service-message" style="margin-top: 16px; padding: 12px; border-radius: 6px; display: none;"></div>
+            </div>
+        </div>
+    </div>
+    
     <div class="modal" id="companies-modal">
         <div class="modal-content" style="max-width: 1200px; width: 95%;">
             <div class="modal-header">
@@ -262,7 +455,7 @@
                         <option value="unknown">Unknown</option>
                     </select>
                 </div>
-                <div style="max-height: 60vh; overflow-y: auto;">
+                <div style="max-height: 60vh; overflow-y: auto;" class="styled-scroll">
                     <table class="table">
                         <thead>
                             <tr>
@@ -310,10 +503,71 @@
     <script>
         const API = '/api/v1';
         
-        async function loadDashboard() {
+        // Theme toggle
+        function toggleTheme() {
+            const html = document.documentElement;
+            const current = html.getAttribute('data-theme');
+            const newTheme = current === 'dark' ? 'light' : 'dark';
+            html.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            document.getElementById('theme-toggle').textContent = newTheme === 'dark' ? '☀️' : '🌙';
+        }
+        
+        // Load saved theme preference
+        (function() {
+            const saved = localStorage.getItem('theme') || 'light';
+            document.documentElement.setAttribute('data-theme', saved);
+            document.getElementById('theme-toggle').textContent = saved === 'dark' ? '☀️' : '🌙';
+        })();
+        
+        // Dashboard cache for instant load
+        let dashboardCache = null;
+        let dashboardCacheTime = 0;
+        const DASHBOARD_CACHE_TTL = 30000; // 30s
+
+        function getCachedDashboard() {
+            if (dashboardCache && (Date.now() - dashboardCacheTime) < DASHBOARD_CACHE_TTL) {
+                return dashboardCache;
+            }
+            return null;
+        }
+
+        function setCachedDashboard(data) {
+            dashboardCache = data;
+            dashboardCacheTime = Date.now();
+        }
+
+        async function loadDashboard(forceRefresh = false) {
+            // Try cache first for instant load
+            const cached = getCachedDashboard();
+            
+            // Render cached data immediately if available and not forcing refresh
+            if (cached && !forceRefresh) {
+                console.log('Using cached dashboard data');
+                renderDashboardData(cached);
+            } else if (!cached) {
+                // Show loading state if no cache available
+                const pipelineMap = document.getElementById('pipeline-map');
+                if (pipelineMap) {
+                    pipelineMap.innerHTML = '<div class="loading" style="padding:20px;text-align:center">Loading pipeline...</div>';
+                }
+            }
+            
             try {
-                const res = await fetch(`${API}/dashboard/stats`);
+                // Fetch fresh data with timeout protection
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 15000);
+                
+                const res = await fetch(`${API}/dashboard/stats`, { 
+                    signal: controller.signal 
+                });
+                clearTimeout(timeoutId);
+                
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
                 const data = await res.json();
+                
+                // Update cache
+                setCachedDashboard(data);
                 
                 document.getElementById('total-companies').textContent = data.metrics.companies_total;
                 document.getElementById('total-contacts').textContent = data.metrics.contacts_total;
@@ -322,47 +576,551 @@
                 document.getElementById('completed-jobs').textContent = data.metrics.completed_jobs;
                 document.getElementById('failed-jobs').textContent = data.metrics.failed_jobs;
                 
-                const servicesGrid = document.getElementById('services');
-                const servicesList = data.services && data.services.services ? data.services.services : [];
-                if (servicesList.length === 0) {
-                    servicesGrid.innerHTML = '<div class="empty-state">No services</div>';
-                } else {
-                    servicesGrid.innerHTML = servicesList.map((s) => `
-                        <div class="service-item">
-                            <span class="name">${s.name}</span>
-                            <div class="status">
-                                <span class="status-dot ${s.status === 'running' ? 'running' : 'stopped'}"></span>
-                                ${s.status === 'running' ? 'Running' : 'Stopped'}
-                            </div>
-                        </div>
-                    `).join('');
+                renderPipelineMap(data.pipeline);
+                
+                // Bottleneck detection
+                detectBottlenecks(data.pipeline);
+                
+                // Load metrics chart
+                if (document.getElementById('metricsChart')) {
+                    try {
+                        if (!metricsChart) {
+                            selectService(metricsService);
+                        }
+                    } catch (e) {
+                        console.error('Failed to load metrics:', e);
+                    }
                 }
                 
-                const queueList = document.getElementById('job-queue');
-                if (data.job_queue.length === 0) {
-                    queueList.innerHTML = '<div class="empty-state">No pending jobs</div>';
-                } else {
-                    queueList.innerHTML = data.job_queue.map(job => `
-                        <div class="queue-item">
-                            <div>
-                                <div class="keyword">${job.keyword}</div>
-                                <div class="meta">${job.region}</div>
+                
+                
+                // Fetch all jobs for both columns
+                try {
+                    const allJobsRes = await fetch(`${API}/discovery-jobs?limit=500`);
+                    const allJobs = await allJobsRes.json();
+                    
+                    // Recently Completed (left) - completed status, max 7
+                    const completedJobs = allJobs
+                        .filter(j => j.status === 'completed')
+                        .slice(0, 7);
+                    
+                    const completedList = document.getElementById('completed-queue');
+                    if (completedJobs.length === 0) {
+                        completedList.innerHTML = '<div class="empty-state" style="padding:16px;">No completed jobs</div>';
+                    } else {
+                        completedList.innerHTML = completedJobs.map(job => `
+                            <div class="queue-item">
+                                <div>
+                                    <div class="keyword">${job.keyword}</div>
+                                    <div class="meta">${job.region}</div>
+                                </div>
+                                <span class="badge ${job.status}">${job.status}</span>
                             </div>
-                            <span class="badge ${job.status}">${job.status}</span>
+                        `).join('');
+                    }
+                    
+                    // Active (right) - pending + processing, no limit
+                    const activeJobs = allJobs
+                        .filter(j => j.status === 'pending' || j.status === 'processing');
+                    
+                    const activeList = document.getElementById('active-queue');
+                    if (activeJobs.length === 0) {
+                        activeList.innerHTML = '<div class="empty-state" style="padding:16px;">No active jobs</div>';
+                    } else {
+                        activeList.innerHTML = activeJobs.map(job => `
+                            <div class="queue-item">
+                                <div>
+                                    <div class="keyword">${job.keyword}</div>
+                                    <div class="meta">${job.region}</div>
+                                </div>
+                                <span class="badge ${job.status}">${job.status}</span>
+                            </div>
+                        `).join('');
+                    }
+                } catch (err) {
+                    console.error('Failed to load jobs:', err);
+                }
+} catch (e) {
+                // AbortError is expected - don't log it, just use cache
+                if (e.name !== 'AbortError') {
+                    console.error('Failed to load dashboard:', e.name, e.message);
+                }
+                if (cached) {
+                    renderDashboardData(cached);
+                } else if (e.name !== 'AbortError') {
+                    showToast('Dashboard unavailable', 'error');
+                }
+            }
+        }
+
+        // Toast notification helper
+        function showToast(message, type = 'info') {
+            const existing = document.getElementById('toast-notification');
+            if (existing) existing.remove();
+            
+            const toast = document.createElement('div');
+            toast.id = 'toast-notification';
+            toast.style.cssText = 'position:fixed;top:20px;right:20px;padding:12px 20px;z-index:10000;border-radius:6px;font-size:14px;font-weight:500;box-shadow:0 4px 12px rgba(0,0,0,0.15);animation:slideIn 0.3s ease;';
+            toast.style.background = type === 'error' ? '#ef4444' : type === 'warning' ? '#f59e0b' : '#10b981';
+            toast.style.color = 'white';
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transition = 'opacity 0.3s';
+                setTimeout(() => toast.remove(), 300);
+            }, 4000);
+        }
+
+        function renderDashboardData(data) {
+            // Reset exponential backoff after successful refresh
+            window.serviceActionCount = 0;
+            
+            // Render pipeline data (shared between cache and fresh)
+            document.getElementById('total-companies').textContent = data.metrics.companies_total;
+            document.getElementById('total-contacts').textContent = data.metrics.contacts_total;
+            document.getElementById('verified-contacts').textContent = data.metrics.verified_count;
+            document.getElementById('pending-jobs').textContent = data.metrics.pending_jobs;
+            document.getElementById('completed-jobs').textContent = data.metrics.completed_jobs;
+            document.getElementById('failed-jobs').textContent = data.metrics.failed_jobs;
+            renderPipelineMap(data.pipeline);
+        }
+        
+        let metricsChart = null;
+        let metricsService = 'discovery';
+        let currentWindow = '5m';
+        let serviceCounterInterval = null;
+        let currentService = null;
+        let metricsInterval = null;
+        
+        function selectService(service) {
+            metricsService = service;
+            document.querySelectorAll('[id^="svc-"]').forEach(el => {
+                el.style.borderBottom = 'none';
+                el.style.color = '#64748b';
+            });
+            const selected = document.getElementById('svc-' + service);
+            if (selected) {
+                selected.style.borderBottom = '2px solid #3b82f6';
+                selected.style.color = '#3b82f6';
+            }
+            loadMetrics();
+        }
+        
+        async function loadMetrics() {
+            const canvas = document.getElementById('metricsChart');
+            if (!canvas) return;
+            
+            try {
+                const res = await fetch(`${API}/dashboard/metrics?service=${metricsService}&window=${currentWindow}`);
+                const data = await res.json();
+                
+                // Empty state handling
+                if (!data.data || data.data.length === 0) {
+                    const ctx = canvas.getContext('2d');
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    ctx.font = '14px Inter';
+                    ctx.fillStyle = '#64748b';
+                    ctx.textAlign = 'center';
+                    
+                    // Show helpful message based on window
+                    const windowDisplay = currentWindow === '5m' ? '5 minutes' : currentWindow === '1h' ? '1 hour' : '24 hours';
+                    if (data.error && data.error.includes('No data')) {
+                        ctx.fillText(data.error, canvas.width / 2, canvas.height / 2);
+                    } else {
+                        ctx.fillText(`No data in last ${windowDisplay} — services may not have written metrics yet`, canvas.width / 2, canvas.height / 2);
+                    }
+                    return;
+                }
+                
+                const ctx = canvas.getContext('2d');
+                const labels = data.data.map(d => d.timestamp);
+                
+                // Get all unique metric keys (exclude timestamp)
+                const allMetricKeys = new Set();
+                data.data.forEach(d => {
+                    Object.keys(d).forEach(k => {
+                        if (k !== 'timestamp') allMetricKeys.add(k);
+                    });
+                });
+                
+                // Primary metrics per service (for "all" view)
+                const servicePrimaryMetrics = {
+                    'discovery': 'companies_found',
+                    'browsing': 'pages_browsed',
+                    'enrichment': 'emails_collected',
+                    'verification': 'verified_count'
+                };
+                
+                // Color mapping per metric
+                const metricColors = {
+                    'companies_found': '#3b82f6',
+                    'jobs_active': '#60a5fa',
+                    'jobs_pending': '#93c5fd',
+                    'pages_browsed': '#818cf8',
+                    'score_strong': '#a78bfa',
+                    'score_good': '#c4b5fd',
+                    'score_weak': '#ddd6fe',
+                    'emails_collected': '#10b981',
+                    'companies_enriched': '#34d399',
+                    'verified_count': '#f59e0b',
+                    'failed_count': '#fbbf24',
+                    'queue_size': '#64748b'
+                };
+                
+                // Service colors (for "all" view)
+                const serviceColors = {
+                    'discovery': '#3b82f6',
+                    'browsing': '#818cf8',
+                    'enrichment': '#10b981',
+                    'verification': '#f59e0b'
+                };
+                
+                let datasets = [];
+                
+                if (metricsService === 'all') {
+                    // "All Services" view - one line per service with primary metric
+                    Object.keys(servicePrimaryMetrics).forEach(svc => {
+                        const primaryMetric = servicePrimaryMetrics[svc];
+                        const values = data.data.map(d => {
+                            // Find entries for this service
+                            const svcData = d[primaryMetric] || 0;
+                            return svcData;
+                        });
+                        datasets.push({
+                            label: svc,
+                            data: values,
+                            borderColor: serviceColors[svc],
+                            backgroundColor: serviceColors[svc] + '20',
+                            fill: false,
+                            tension: 0.4,
+                            pointRadius: 2,
+                            pointHoverRadius: 5
+                        });
+                    });
+                } else {
+                    // Single service view - one line per metric
+                    Array.from(allMetricKeys).forEach(metric => {
+                        const values = data.data.map(d => d[metric] || 0);
+                        datasets.push({
+                            label: metric,
+                            data: values,
+                            borderColor: metricColors[metric] || '#3b82f6',
+                            backgroundColor: (metricColors[metric] || '#3b82f6') + '20',
+                            fill: false,
+                            tension: 0.4,
+                            pointRadius: 2,
+                            pointHoverRadius: 5
+                        });
+                    });
+                }
+                
+                // Update existing chart in place (no destroy), or create new one
+                if (metricsChart) {
+                    // Same service/window? Update data in place
+                    if (metricsChart._service === metricsService && 
+                        metricsChart._window === currentWindow) {
+                        metricsChart.data.labels = labels;
+                        metricsChart.data.datasets.forEach((ds, i) => {
+                            if (datasets[i]) {
+                                ds.data = datasets[i].data;
+                            }
+                        });
+                        metricsChart.update('none'); // instant, no animation
+                        return;
+                    }
+                    // Different service/window? Destroy and recreate
+                    metricsChart.destroy();
+                }
+                
+                // Create new chart
+                metricsChart = new Chart(ctx, {
+                    type: 'line',
+                    data: { labels, datasets },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: {
+                            mode: 'index',
+                            intersect: false,
+                        },
+                        plugins: {
+                            legend: { 
+                                display: true,
+                                position: 'bottom',
+                                labels: { boxWidth: 12, padding: 10, color: '#94a3b8' }
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    title: (items) => `Time: ${items[0].label}`,
+                                    label: (item) => `${item.dataset.label}: ${item.raw}`
+                                }
+                            }
+                        },
+                        scales: {
+                            x: { grid: { color: '#2a2d3a' } },
+                            y: { grid: { color: '#2a2d3a' }, beginAtZero: true }
+                        }
+                    }
+                });
+                
+                // Store current service/window for append logic
+                metricsChart._service = metricsService;
+                metricsChart._window = currentWindow;
+                
+            } catch (e) {
+                console.error('Failed to load metrics:', e);
+            }
+        }
+        
+        function renderPipelineMap(pipeline) {
+            window.pipelineData = pipeline;
+            const container = document.getElementById('pipeline-map');
+            if (!pipeline || !pipeline.discovery) {
+                container.innerHTML = '<div class="empty-state" style="color:var(--text-secondary)">Loading pipeline...</div>';
+                return;
+            }
+            
+            const nodes = [
+                { key: 'discovery', label: 'Discovery' },
+                { key: 'browsing', label: 'Browsing' },
+                { key: 'enrichment', label: 'Enrichment' },
+                { key: 'verification', label: 'Verification' }
+            ];
+            
+            const sources = pipeline.sources || { ddgs: {}, searxng: {}, commoncrawl: {}, theharvester: {} };
+            
+            let html = '';
+            nodes.forEach((node, i) => {
+                const data = pipeline[node.key];
+                const status = data.status || 'stopped';
+                const queueLevel = data.queue > 50 ? 'high' : data.queue > 10 ? 'medium' : 'low';
+                
+                html += `<div class="pipeline-node ${status}" onclick="openServiceModal('${node.key}', '${node.label}')">
+                    <div class="pipeline-node-name">${node.label}</div>
+                    <div class="pipeline-node-divider"></div>
+                    <div class="pipeline-node-stats">
+                        <div>
+                            <div class="stat-label">Uptime</div>
+                            <div class="stat-value">${data.uptime || '--'}</div>
                         </div>
-                    `).join('');
+                        <div>
+                            <div class="stat-label">Processed</div>
+                            <div class="stat-value">${data.processed}</div>
+                        </div>
+                    </div>
+                    <div class="pipeline-node-queue ${queueLevel}">
+                        ${data.queue} waiting
+                    </div>
+                    <div class="node-toggle" onclick="event.stopPropagation(); toggleSubNodes('${node.key}')">▼ Sources</div>
+                    <div class="sub-nodes" id="sub-${node.key}">
+                        <div class="sub-node"><span class="sub-label">DDGS:</span> ${sources.ddgs?.status || 'N/A'}</div>
+                        <div class="sub-node"><span class="sub-label">SearXNG:</span> ${sources.searxng?.status || 'N/A'}</div>
+                        <div class="sub-node"><span class="sub-label">CommonCrawl:</span> ${sources.commoncrawl?.status || 'N/A'}</div>
+                        <div class="sub-node"><span class="sub-label">theHarvester:</span> ${sources.theharvester?.status || 'N/A'}</div>
+                    </div>
+                </div>`;
+                
+                if (i < nodes.length - 1) {
+                    const lineStatus = status === 'running' ? 'running' : 'stopped';
+                    html += `<div class="pipeline-connector">
+                        <div class="pipeline-line ${lineStatus}">
+                            ${lineStatus === 'running' ? '<div class="pipeline-line-dot"></div><div class="pipeline-line-dot"></div>' : ''}
+                        </div>
+                    </div>`;
+                }
+            });
+            
+            container.innerHTML = html;
+        }
+        
+        function toggleSubNodes(nodeKey) {
+            const el = document.getElementById(`sub-${nodeKey}`);
+            el.classList.toggle('expanded');
+            const toggle = el.previousElementSibling;
+            toggle.textContent = el.classList.contains('expanded') ? '▲ Sources' : '▼ Sources';
+        }
+        
+        async function openServiceModal(name, label) {
+            console.log('openServiceModal called:', name, label);
+            ['btn-start', 'btn-stop', 'btn-restart'].forEach(id => {
+                const btn = document.getElementById(id);
+                if (btn) {
+                    btn.disabled = false;
+                    btn.style.display = 'inline-block';
+                    btn.textContent = id === 'btn-start' ? 'Start' : 
+                                   id === 'btn-stop' ? 'Stop' : 'Restart';
+                }
+            });
+            
+            if (serviceCounterInterval) {
+                clearInterval(serviceCounterInterval);
+                serviceCounterInterval = null;
+            }
+            currentService = name;
+            document.getElementById('service-modal-title').textContent = label;
+            document.getElementById('service-message').style.display = 'none';
+            
+            try {
+                const res = await fetch(`${API}/services/status`);
+                const services = await res.json();
+                const service = services.find(s => s.name === name);
+                const status = service?.status || 'stopped';
+                const uptime = service?.uptime ? formatUptime(service.uptime) : 'Not running';
+                const startedAgo = service?.start_time ? 'Started: ' + formatStartTime(service.start_time) : '';
+                
+                document.getElementById('service-status-icon').textContent = status === 'running' ? '🟢' : '🔴';
+                document.getElementById('service-status-icon').style.color = status === 'running' ? '#10b981' : '#ef4444';
+                document.getElementById('service-status-text').textContent = status === 'running' ? 'Running' : 'Stopped';
+                document.getElementById('service-uptime').innerHTML = uptime + (startedAgo ? `<br><span style="color:#10b981">${startedAgo}</span>` : '');
+                
+                document.getElementById('btn-start').style.display = status === 'running' ? 'none' : 'inline-block';
+                document.getElementById('btn-stop').style.display = status === 'running' ? 'inline-block' : 'none';
+                document.getElementById('btn-restart').style.display = status === 'running' ? 'inline-block' : 'none';
+            } catch (e) {
+                document.getElementById('service-status-icon').textContent = '⚪';
+                document.getElementById('service-status-text').textContent = 'Unknown';
+                document.getElementById('service-uptime').textContent = 'Error loading status';
+            }
+            
+            document.getElementById('service-modal').classList.add('active');
+        }
+        
+        function formatStartTime(timestamp) {
+            if (!timestamp) return '';
+            const now = Date.now() / 1000;
+            const diff = Math.floor(now - timestamp);
+            if (diff < 60) return `${diff}s ago`;
+            if (diff < 3600) return `${Math.floor(diff/60)}m ago`;
+            if (diff < 86400) return `${Math.floor(diff/3600)}h ago`;
+            return `${Math.floor(diff/86400)}d ago`;
+        }
+        
+        function formatUptime(seconds) {
+            if (!seconds) return 'Not running';
+            const h = Math.floor(seconds / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            return h > 0 ? `${h}h ${m}m` : `${m}m`;
+        }
+        
+        async function serviceAction(action, btn) {
+            console.log('serviceAction called:', action, 'currentService:', currentService);
+            if (!currentService) {
+                console.error('currentService is undefined!');
+                return;
+            }
+            
+            console.log('Fetching:', `${API}/services/${currentService}/${action}`);
+            
+            // Disable all buttons immediately to prevent double-clicks
+            ['btn-start', 'btn-stop', 'btn-restart'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.disabled = true;
+            });
+            
+            let counter = 0;
+            const actionPrefix = action === 'start' ? 'Starting' : action === 'stop' ? 'Stopping' : 'Restarting';
+            const originalText = action === 'start' ? 'Start' : action === 'stop' ? 'Stop' : 'Restart';
+            
+            serviceCounterInterval = setInterval(() => {
+                counter++;
+                btn.textContent = `${actionPrefix}... ${counter}s`;
+            }, 1000);
+            btn.textContent = `${actionPrefix}... 0s`;
+            document.getElementById('service-message').style.display = 'none';
+            
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 15000);
+                
+                const res = await fetch(`${API}/services/${currentService}/${action}`, { 
+                    method: 'POST',
+                    signal: controller.signal
+                });
+                clearTimeout(timeoutId);
+                
+                if (!res.ok) {
+                    throw new Error(`HTTP error: ${res.status}`);
+                }
+                
+                const data = await res.json();
+                console.log('Response:', data);
+                
+                if (serviceCounterInterval) {
+                    clearInterval(serviceCounterInterval);
+                    serviceCounterInterval = null;
+                }
+                
+                if (data.success) {
+                    closeModal('service-modal');
+                    // Exponential backoff: Track service actions to extend delay
+                    const now = Date.now();
+                    if (!window.lastServiceActionTime || (now - window.lastServiceActionTime) > 10000) {
+                        window.serviceActionCount = 0;
+                    }
+                    window.lastServiceActionTime = now;
+                    window.serviceActionCount = (window.serviceActionCount || 0) + 1;
+                    
+                    // Delay increases with multiple actions: 3s → 10s → 15s
+                    const baseDelay = window.serviceActionCount === 1 ? 3000 : 
+                                  window.serviceActionCount === 2 ? 10000 : 15000;
+                    
+                    const dashContent = document.getElementById('pipeline-map');
+                    if (dashContent) {
+                        dashContent.innerHTML = '<div class="loading" style="padding:20px;text-align:center;color:var(--text-secondary)">Refreshing pipeline...</div>';
+                    }
+                    setTimeout(() => loadDashboard(), baseDelay);
+                } else {
+                    const msgEl = document.getElementById('service-message');
+                    msgEl.style.display = 'block';
+                    msgEl.style.background = 'rgba(239,68,68,0.1)';
+                    msgEl.style.color = '#ef4444';
+                    msgEl.textContent = `Failed after ${counter}s: ${data.error || 'Failed'}`;
+                    btn.textContent = originalText;
+                    const isRunning = data.error && data.error.includes('already running');
+                    ['btn-start', 'btn-stop', 'btn-restart'].forEach(id => {
+                        const el = document.getElementById(id);
+                        if (!el) return;
+                        el.disabled = false;
+                        if (id === 'btn-start') el.style.display = isRunning ? 'none' : 'inline-block';
+                        if (id === 'btn-stop' || id === 'btn-restart') el.style.display = isRunning ? 'inline-block' : 'none';
+                    });
                 }
             } catch (e) {
-                console.error('Failed to load dashboard:', e);
+                console.error('serviceAction error:', e);
+                if (serviceCounterInterval) {
+                    clearInterval(serviceCounterInterval);
+                    serviceCounterInterval = null;
+                }
+                const msgEl = document.getElementById('service-message');
+                msgEl.style.display = 'block';
+                msgEl.style.background = 'rgba(239,68,68,0.1)';
+                msgEl.style.color = '#ef4444';
+                
+                // Handle abort errors specially
+                if (e.name === 'AbortError') {
+                    msgEl.textContent = `Request timed out after ${counter}s`;
+                } else {
+                    msgEl.textContent = `Failed after ${counter}s: ${e.message || 'Error'}`;
+                }
+                
+                btn.textContent = originalText;
+                ['btn-start', 'btn-stop', 'btn-restart'].forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.disabled = false;
+                });
             }
         }
         
         async function loadJobHistory() {
+            const tbody = document.getElementById('job-history');
+            if (!tbody) return;
+            
             try {
                 const res = await fetch(`${API}/discovery-jobs?limit=20`);
                 const data = await res.json();
                 
-                const tbody = document.getElementById('job-history');
                 const jobs = data.jobs || data;
                 if (!jobs || jobs.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No jobs found</td></tr>';
@@ -383,17 +1141,20 @@
                 }
             } catch (e) {
                 console.error('Failed to load job history:', e);
-                const tbody = document.getElementById('job-history');
-                tbody.innerHTML = '<tr><td colspan="7" class="empty-state">Error loading jobs</td></tr>';
+                if (tbody) {
+                    tbody.innerHTML = '<tr><td colspan="7" class="empty-state">Error loading jobs</td></tr>';
+                }
             }
         }
         
         async function loadCompanies() {
+            const tbody = document.getElementById('company-list');
+            if (!tbody) return;
+            
             try {
                 const res = await fetch(`${API}/companies?limit=20`);
                 const data = await res.json();
                 
-                const tbody = document.getElementById('company-list');
                 const companiesList = data.companies || data;
                 if (!companiesList || companiesList.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No companies found</td></tr>';
@@ -409,17 +1170,9 @@
                 }
             } catch (e) {
                 console.error('Failed to load companies:', e);
-                const tbody = document.getElementById('company-list');
-                tbody.innerHTML = '<tr><td colspan="4" class="empty-state">Error loading companies</td></tr>';
-            }
-        }
-        
-        async function refreshServices() {
-            try {
-                await fetch(`${API}/services/refresh`, { method: 'POST' });
-                loadDashboard();
-            } catch (e) {
-                console.error('Failed to refresh services:', e);
+                if (tbody) {
+                    tbody.innerHTML = '<tr><td colspan="4" class="empty-state">Error loading companies</td></tr>';
+                }
             }
         }
         
@@ -491,7 +1244,7 @@
                 if (!logs || logs.length === 0) {
                     container.innerHTML = '<div class="log-line">No logs available</div>';
                 } else {
-                    container.innerHTML = logs.map(line => `
+                    container.innerHTML = logs.slice().reverse().map(line => `
                         <div class="log-line"><span class="log-ts">[${new Date().toLocaleTimeString()}]</span> ${line}</div>
                     `).join('');
                 }
@@ -564,12 +1317,26 @@
         
         async function useTemplate(id) {
             try {
-                await fetch(`${API}/discovery-jobs/templates/${id}/use`, {
+                // Fetch all templates to get the actual template data
+                const res = await fetch(`${API}/discovery-jobs/templates`);
+                const templates = await res.json();
+                const template = templates.find(t => t.id === id);
+                
+                if (!template) {
+                    console.error('Template not found');
+                    return;
+                }
+                
+                // Create job with actual template values
+                await fetch(`${API}/discovery-jobs`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ keyword: 'from-template', region: 'Global' })
+                    body: JSON.stringify({ 
+                        keyword: template.keyword,
+                        region: template.region || 'Global'
+                    })
                 });
-                alert('Job created from template');
+                alert(`Job created: ${template.keyword}`);
                 loadDashboard();
             } catch (e) {
                 console.error('Failed to use template:', e);
@@ -719,17 +1486,115 @@
         
         function closeModal(id) {
             document.getElementById(id).classList.remove('active');
+            if (id === 'service-modal' && serviceCounterInterval) {
+                clearInterval(serviceCounterInterval);
+                serviceCounterInterval = null;
+            }
         }
         
-        // Auto-refresh every 10 seconds
-        setInterval(() => {
-            loadDashboard();
-            loadJobHistory();
-            loadCompanies();
-        }, 10000);
+        // Close modal when clicking outside
+        document.querySelectorAll('.modal').forEach(modal => {
+            modal.addEventListener('click', function(e) {
+                if (e.target === this) {
+                    this.classList.remove('active');
+                    if (this.id === 'service-modal' && serviceCounterInterval) {
+                        clearInterval(serviceCounterInterval);
+                        serviceCounterInterval = null;
+                    }
+                }
+            });
+        });
         
+        // Bottleneck detection
+        function detectBottlenecks(pipeline) {
+            if (!pipeline) return;
+            
+            const thresholds = { low: 10, medium: 30, high: 50 };
+            const nodes = ['discovery', 'browsing', 'enrichment', 'verification'];
+            
+            const bottlenecks = [];
+            nodes.forEach(node => {
+                const queue = pipeline[node]?.queue || 0;
+                if (queue > thresholds.high) {
+                    bottlenecks.push({ node, queue, severity: 'high' });
+                } else if (queue > thresholds.medium) {
+                    bottlenecks.push({ node, queue, severity: 'medium' });
+                }
+            });
+            
+            const existing = document.getElementById('bottleneck-warning');
+            if (bottlenecks.length > 0) {
+                if (!existing) {
+                    const warning = document.createElement('div');
+                    warning.id = 'bottleneck-warning';
+                    warning.style.cssText = 'background: #fef3c7; color: #92400e; padding: 12px; margin-bottom: 16px; border-radius: 8px; font-size: 14px;';
+                    warning.innerHTML = `⚠️ <strong>Bottlenecks detected:</strong> ${bottlenecks.map(b => `${b.node} (${b.queue} pending)`).join(', ')}`;
+                    document.querySelector('.container').prepend(warning);
+                } else {
+                    existing.innerHTML = `⚠️ <strong>Bottlenecks detected:</strong> ${bottlenecks.map(b => `${b.node} (${b.queue} pending)`).join(', ')}`;
+                }
+            } else if (existing) {
+                existing.remove();
+            }
+        }
+        
+        let dashboardInterval = 30000;  // 30 seconds - reduced API load
+        let metricsIntervalValue = 10000;  // 10s for metrics
+        
+        // Update metrics refresh rate based on window
+        function setMetricsWindow(window) {
+            currentWindow = window;
+            metricsIntervalValue = (window === '5m') ? 10000 : 30000;  // 10s/30s instead of 3s/10s
+            
+            document.getElementById('btn-live').className = window === '5m' ? 'btn btn-sm btn-primary' : 'btn btn-sm btn-secondary';
+            document.getElementById('btn-1h').className = window === '1h' ? 'btn btn-sm btn-primary' : 'btn btn-sm btn-secondary';
+            document.getElementById('btn-24h').className = window === '24h' ? 'btn btn-sm btn-primary' : 'btn btn-sm btn-secondary';
+            loadMetrics();
+            // Reset metrics interval with new timing
+            if (metricsIntervalObj) clearInterval(metricsIntervalObj);
+            metricsIntervalObj = setInterval(() => loadMetrics(), metricsIntervalValue);
+        }
+        let metricsIntervalObj = null;
+        
+        // Auto-refresh intervals - consolidated to minimize API calls
+        // loadDashboard() already fetches both stats AND job queue in one call
+        setInterval(() => loadDashboard(), dashboardInterval);
+        
+        // Metrics polling - slower, only 5m window gets fast updates
+        setInterval(() => loadMetrics(), metricsIntervalValue);
+        
+        // Update metrics interval dynamically
+        const originalSetMetricsWindow = setMetricsWindow;
+        setMetricsWindow = function(window) {
+            originalSetMetricsWindow(window);
+        }
+        
+        // Log streaming in modal (3s)
+        let logsInterval = null;
+        const originalViewLogs = viewLogs;
+        viewLogs = async function() {
+            await originalViewLogs();
+            // Start polling logs every 3s when modal is open
+            if (logsInterval) clearInterval(logsInterval);
+            logsInterval = setInterval(async () => {
+                if (document.getElementById('logs-modal').classList.contains('active')) {
+                    try {
+                        const res = await fetch(`${API}/services/logs?limit=100`);
+                        const data = await res.json();
+                        const container = document.getElementById('logs-content');
+                        container.innerHTML = data.logs.slice().reverse().map(line => `
+                            <div class="log-line"><span class="log-ts">[${new Date().toLocaleTimeString()}]</span> ${line}</div>
+                        `).join('');
+                        container.scrollTop = 0;
+                    } catch (e) {}
+                } else {
+                    clearInterval(logsInterval);
+                }
+            }, 3000);
+        }
+        
+        // loadDashboard() already fetches job queue data internally
         loadDashboard();
-        loadJobHistory();
     </script>
 </body>
 </html>

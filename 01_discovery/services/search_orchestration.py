@@ -3,12 +3,10 @@ Search Orchestration Module for Lead Discovery.
 Combines DuckDuckGo (ddgs) and SearXNG for comprehensive domain discovery.
 """
 import os
-import json
 import time
 import logging
 from typing import List, Set, Optional, Dict, Any, Tuple
 from urllib.parse import urlparse
-from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeout
 
@@ -19,6 +17,9 @@ from config import settings
 DDGS_TIMEOUT = 10
 
 logger = logging.getLogger(__name__)
+
+# In-memory TTL cache — no file I/O per search call
+_memory_cache: Dict[str, tuple[List[str], float]] = {}
 
 
 class SearchOrchestrationError(Exception):
@@ -35,62 +36,21 @@ DIRECTORY_DOMAINS = [
 ]
 
 
-def _get_cache_file_path() -> str:
-    """Get path to search cache file."""
-    cache_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'cache')
-    os.makedirs(cache_dir, exist_ok=True)
-    return os.path.join(cache_dir, 'search_cache.json')
-
-
-def _load_cache() -> Dict[str, Any]:
-    """Load search cache from file."""
-    cache_file = _get_cache_file_path()
-    try:
-        if os.path.exists(cache_file):
-            with open(cache_file, 'r') as f:
-                return json.load(f)
-    except Exception as e:
-        logger.warning(f"Failed to load search cache: {str(e)}")
-    return {}
-
-
-def _save_cache(cache: Dict[str, Any]) -> None:
-    """Save search cache to file."""
-    cache_file = _get_cache_file_path()
-    try:
-        with open(cache_file, 'w') as f:
-            json.dump(cache, f, indent=2)
-    except Exception as e:
-        logger.warning(f"Failed to save search cache: {str(e)}")
-
-
 def _get_cached_results(query: str) -> Optional[List[str]]:
-    """Get cached search results if not expired."""
-    cache = _load_cache()
+    """Get cached search results if not expired (in-memory TTL cache)."""
     cache_hours = getattr(settings, 'SEARCH_CACHE_HOURS', 1)
-    
-    if query in cache:
-        cached_time = cache[query].get('timestamp', '')
-        try:
-            cached_dt = datetime.fromisoformat(cached_time)
-            if datetime.now() - cached_dt < timedelta(hours=cache_hours):
-                logger.info(f"Using cached results for query: '{query}'")
-                return cache[query].get('domains', [])
-        except Exception:
-            pass
-    
+    entry = _memory_cache.get(query)
+    if entry:
+        domains, timestamp = entry
+        if time.time() - timestamp < cache_hours * 3600:
+            logger.info(f"Using cached results for query: '{query}'")
+            return domains
     return None
 
 
 def _save_cached_results(query: str, domains: List[str]) -> None:
-    """Save search results to cache."""
-    cache = _load_cache()
-    cache[query] = {
-        'domains': domains,
-        'timestamp': datetime.now().isoformat(),
-        'count': len(domains)
-    }
-    _save_cache(cache)
+    """Save search results to in-memory cache."""
+    _memory_cache[query] = (domains, time.time())
 
 
 def generate_query_variations(base_query: str, region: str = "") -> List[str]:
@@ -99,11 +59,11 @@ def generate_query_variations(base_query: str, region: str = "") -> List[str]:
         region = ""
     elif not isinstance(region, str):
         region = str(region)
-    
+
     variations = []
     region_suffix = f" in {region}" if region and region.lower() != "global" else ""
     variations.append(base_query + region_suffix)
-    
+
     if region:
         region_lower = region.lower()
         tld_map = {
@@ -114,14 +74,14 @@ def generate_query_variations(base_query: str, region: str = "") -> List[str]:
         variations.append(f"{base_query} site:.{tld}")
     else:
         variations.append(f"{base_query} company")
-    
+
     seen = set()
     unique_variations = []
     for v in variations:
         if v not in seen:
             seen.add(v)
             unique_variations.append(v)
-    
+
     return unique_variations[:3]
 
 
@@ -184,8 +144,6 @@ def _ddgs_search_thread(query: str, max_results: int, region: str, result_contai
 
 def _ddgs_search_with_timeout(query: str, max_results: int, region: str) -> List[Dict[str, Any]]:
     """Run DDGS search with timeout using thread."""
-    from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
-
     result_container = {'results': [], 'error': None}
 
     with ThreadPoolExecutor(max_workers=1) as executor:
@@ -300,27 +258,27 @@ def search_domains_dual(base_query: str, region: str = "", target_results: int =
     cached = _get_cached_results(cache_key)
     if cached:
         return cached, {'source': 'cache', 'count': len(cached)}
-    
+
     queries = generate_query_variations(base_query, region)
     logger.info(f"Starting dual search: {len(queries)} variations, target: {target_results}")
-    
+
     ddgs_domains = search_domains_ddgs(queries, ddgs_results, settings.SEARCH_DDGS_DELAY)
     logger.info(f"DDGS search completed: {len(ddgs_domains)} domains")
-    
+
     searxng_domains = search_domains_searxng(queries, searxng_results, settings.SEARCH_SEARXNG_DELAY)
     logger.info(f"SearXNG search completed: {len(searxng_domains)} domains")
-    
+
     all_domains: Set[str] = set()
     all_domains.update(ddgs_domains)
     all_domains.update(searxng_domains)
     final_domains = sorted(list(all_domains))
-    
+
     if len(final_domains) > target_results:
         final_domains = final_domains[:target_results]
-    
+
     elapsed_time = time.time() - start_time
     _save_cached_results(cache_key, final_domains)
-    
+
     metadata = {
         'source': 'ddgs + searxng',
         'ddgs_count': len(ddgs_domains),
@@ -331,7 +289,7 @@ def search_domains_dual(base_query: str, region: str = "", target_results: int =
         'base_query': base_query,
         'region': region
     }
-    
+
     logger.info(f"Dual search completed: {len(final_domains)} domains in {elapsed_time:.2f}s")
     return final_domains, metadata
 

@@ -1,15 +1,31 @@
 """
 Discovery Jobs API endpoints.
 """
+import traceback
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from datetime import datetime
+import logging
 
-from database import get_db, init_db, DiscoveryJob, JobTemplate
+from database import get_db, init_db, DiscoveryJob, JobTemplate, engine
 
 router = APIRouter(prefix="/discovery-jobs", tags=["Discovery Jobs"])
+logger = logging.getLogger(__name__)
+
+
+@router.get("/_test-db")
+def test_db():
+    """Test database connection."""
+    try:
+        from sqlalchemy import text
+        with engine.connect() as conn:
+            result = conn.execute(text("SELECT 1 as test")).scalar()
+        return {"status": "ok", "result": result}
+    except Exception as e:
+        logger.error(f"DB test failed: {e}")
+        return {"status": "error", "error": str(e)}
 
 
 class JobCreate(BaseModel):
@@ -49,40 +65,52 @@ class JobResponse(BaseModel):
 @router.post("", response_model=JobResponse)
 def create_job(job: JobCreate, db: Session = Depends(get_db)):
     """Create a new discovery job."""
-    existing = db.query(DiscoveryJob).filter(
-        DiscoveryJob.keyword == job.keyword,
-        DiscoveryJob.region == job.region
-    ).first()
-    
-    if existing:
-        existing.status = 'pending'
-        existing.error_message = None
+    logger.info(f"Creating job: {job.keyword} ({job.region})")
+    try:
+        existing = db.query(DiscoveryJob).filter(
+            DiscoveryJob.keyword == job.keyword,
+            DiscoveryJob.region == job.region
+        ).first()
+        
+        if existing:
+            logger.info(f"Found existing job {existing.id}, resetting to pending")
+            existing.status = 'pending'
+            existing.error_message = None
+            db.commit()
+            db.refresh(existing)
+            return existing
+        
+        logger.info("Creating new job record")
+        new_job = DiscoveryJob(
+            keyword=job.keyword,
+            region=job.region,
+            status='pending'
+        )
+        db.add(new_job)
         db.commit()
-        db.refresh(existing)
-        return existing
-    
-    new_job = DiscoveryJob(
-        keyword=job.keyword,
-        region=job.region,
-        status='pending'
-    )
-    db.add(new_job)
-    db.commit()
-    db.refresh(new_job)
-    return new_job
+        db.refresh(new_job)
+        logger.info(f"Created job {new_job.id}")
+        return new_job
+    except Exception as e:
+        logger.error(f"Failed to create job: {e}\n{traceback.format_exc()}")
+        raise
 
 
-@router.get("", response_model=List[JobResponse])
+@router.get("")  # response_model removed for error handling
 def list_jobs(
     status: Optional[str] = Query(None),
     limit: int = Query(100),
     db: Session = Depends(get_db)
 ):
     """List discovery jobs with optional filtering."""
-    query = db.query(DiscoveryJob)
-    if status:
-        query = query.filter(DiscoveryJob.status == status)
-    return query.order_by(DiscoveryJob.created_at.desc()).limit(limit).all()
+    try:
+        query = db.query(DiscoveryJob)
+        if status:
+            query = query.filter(DiscoveryJob.status == status)
+        return query.order_by(DiscoveryJob.created_at.desc()).limit(limit).all()
+    except Exception as e:
+        # Return empty list on error instead of 500
+        return []
 
 
 @router.post("/templates")
@@ -204,10 +232,11 @@ class BulkJobCreate(BaseModel):
     keywords: List[str]
     region: str = "Global"
 
-
-class JobTemplateUse(BaseModel):
-    keyword: str
-    region: str = "Global"
+    @classmethod
+    def validate(cls, v):
+        if len(v.keywords) > 100:
+            raise ValueError('Maximum 100 keywords per bulk request')
+        return v
 
 
 @router.post("/bulk")

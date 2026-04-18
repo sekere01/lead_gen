@@ -9,7 +9,10 @@ import dns.resolver
 from typing import Tuple, Optional
 from email.utils import parseaddr
 
-EMAIL_REGEX = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
+import logging
+logger = logging.getLogger(__name__)
+
+from utils.email_utils import EMAIL_REGEX
 
 
 def validate_email_syntax(email: str) -> bool:
@@ -43,33 +46,38 @@ def smtp_handshake(email: str, mx_records: list, timeout: int = 5) -> Tuple[bool
     """Step 3: Perform SMTP RCPT TO handshake to verify mailbox."""
     if not mx_records:
         return False, "No MX records available"
-    
+
     for mx_info in mx_records:
         mx_host = mx_info['exchange']
         try:
             server = smtplib.SMTP(timeout=timeout)
             server.connect(mx_host, 25)
+            server.sock.settimeout(timeout)
             server.helo()
             server.mail('')
             code, message = server.rcpt(str(email))
             server.quit()
-            
+
             if code in [250, 251]:
                 return True, f"SMTP success: {message.decode('utf-8') if isinstance(message, bytes) else message}"
             elif code in [450, 550, 551, 554]:
                 return False, f"SMTP failed: {message.decode('utf-8') if isinstance(message, bytes) else message}"
             else:
                 return False, f"SMTP temporary error {code}: {message.decode('utf-8') if isinstance(message, bytes) else message}"
-        
-        except smtplib.SMTPConnectError:
+
+        except smtplib.SMTPConnectError as e:
+            logger.debug(f"SMTP connect failed for {mx_host}: {e}")
             continue
-        except smtplib.SMTPServerDisconnected:
+        except smtplib.SMTPServerDisconnected as e:
+            logger.debug(f"SMTP disconnected for {mx_host}: {e}")
             continue
-        except socket.timeout:
+        except socket.timeout as e:
+            logger.debug(f"SMTP socket timeout for {mx_host}: {e}")
             continue
-        except Exception:
+        except Exception as e:
+            logger.warning(f"SMTP error for {email} on {mx_host}: {e}")
             continue
-    
+
     return False, "Could not connect to any mail server"
 
 

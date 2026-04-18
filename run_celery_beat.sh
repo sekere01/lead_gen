@@ -18,6 +18,6 @@ REDIS_URL=${REDIS_URL:-redis://localhost:6379/0}
 echo "Starting Celery Beat scheduler"
 echo "Redis broker: $REDIS_URL"
 
-./venv/bin/celery -A celery_tasks beat \
+./.venv/bin/celery -A celery_tasks beat \
     --loglevel=info \
     --schedule=/tmp/celerybeat-schedule.db

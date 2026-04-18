@@ -21,7 +21,7 @@ QUEUE=${1:-discovery,browsing,enrichment,verification}
 echo "Starting Celery worker for queues: $QUEUE"
 echo "Redis broker: $REDIS_URL"
 
-./venv/bin/celery -A celery_tasks worker \
+./.venv/bin/celery -A celery_tasks worker \
     --loglevel=info \
     --queues=$QUEUE \
     --concurrency=1 \

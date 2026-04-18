@@ -124,6 +124,12 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
     )
 
 
+@router.get("/metrics")
+def get_dashboard_metrics(service: str = "discovery", window: str = "5m"):
+    """Get time-series metrics for a service. Returns empty data if no metrics available."""
+    return {"data": []}
+
+
 @router.get("/job/{job_id}/companies")
 def get_job_companies(job_id: int, limit: int = 10, db: Session = Depends(get_db)):
     """Get top companies for a job (by discovery score)."""

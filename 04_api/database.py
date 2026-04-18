@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from functools import lru_cache
 
 from config import settings
-from shared_models import Company, Contact, ExtractedEmail, JobStats, update_job_stats
+from shared_models import Company, Contact, ExtractedEmail, JobStats, update_job_stats, Base
 
 engine = create_engine(
     settings.DATABASE_URL,
@@ -119,6 +119,72 @@ def init_db():
 
         conn.commit()
 
+    with engine.connect() as conn:
+        conn.execute(text("""
+            DO $$
+            BEGIN
+                ALTER TABLE companies ADD COLUMN IF NOT EXISTS browse_heartbeat TIMESTAMP WITH TIME ZONE;
+            EXCEPTION WHEN others THEN NULL;
+            END $$;
+        """))
+        conn.execute(text("""
+            DO $$
+            BEGIN
+                ALTER TABLE companies ADD COLUMN IF NOT EXISTS has_contact_link BOOLEAN DEFAULT FALSE;
+            EXCEPTION WHEN others THEN NULL;
+            END $$;
+        """))
+        conn.execute(text("""
+            DO $$
+            BEGIN
+                ALTER TABLE companies ADD COLUMN IF NOT EXISTS has_address BOOLEAN DEFAULT FALSE;
+            EXCEPTION WHEN others THEN NULL;
+            END $$;
+        """))
+        conn.execute(text("""
+            DO $$
+            BEGIN
+                ALTER TABLE companies ADD COLUMN IF NOT EXISTS has_social_links BOOLEAN DEFAULT FALSE;
+            EXCEPTION WHEN others THEN NULL;
+            END $$;
+        """))
+        conn.execute(text("""
+            DO $$
+            BEGIN
+                ALTER TABLE companies ADD COLUMN IF NOT EXISTS has_email_on_homepage BOOLEAN DEFAULT FALSE;
+            EXCEPTION WHEN others THEN NULL;
+            END $$;
+        """))
+        conn.execute(text("""
+            DO $$
+            BEGIN
+                ALTER TABLE companies ADD COLUMN IF NOT EXISTS is_parked BOOLEAN DEFAULT FALSE;
+            EXCEPTION WHEN others THEN NULL;
+            END $$;
+        """))
+        conn.execute(text("""
+            DO $$
+            BEGIN
+                ALTER TABLE companies ADD COLUMN IF NOT EXISTS language_match BOOLEAN DEFAULT FALSE;
+            EXCEPTION WHEN others THEN NULL;
+            END $$;
+        """))
+        conn.execute(text("""
+            DO $$
+            BEGIN
+                ALTER TABLE companies ADD COLUMN IF NOT EXISTS last_heartbeat TIMESTAMP WITH TIME ZONE;
+            EXCEPTION WHEN others THEN NULL;
+            END $$;
+        """))
+        conn.execute(text("""
+            DO $$
+            BEGIN
+                ALTER TABLE job_stats ADD COLUMN IF NOT EXISTS last_job_id INTEGER;
+            EXCEPTION WHEN others THEN NULL;
+            END $$;
+        """))
+        conn.commit()
+
     try:
         with engine.connect() as conn:
             conn.execute(text("""
@@ -166,7 +232,7 @@ def init_db():
     print("API database tables initialized successfully")
 
 
-class DiscoveryJob(Company.__bases__[0].__class__):
+class DiscoveryJob(Base):
     """DiscoveryJob model — API-specific, not shared."""
     __tablename__ = "discovery_jobs"
 
@@ -183,7 +249,7 @@ class DiscoveryJob(Company.__bases__[0].__class__):
     updated_at = Column(DateTime)
 
 
-class JobTemplate(Company.__bases__[0].__class__):
+class JobTemplate(Base):
     """JobTemplate model — API-specific."""
     __tablename__ = "job_templates"
 
@@ -196,7 +262,7 @@ class JobTemplate(Company.__bases__[0].__class__):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
-class ServiceMetrics(Company.__bases__[0].__class__):
+class ServiceMetrics(Base):
     """ServiceMetrics model — API-specific."""
     __tablename__ = "service_metrics"
 

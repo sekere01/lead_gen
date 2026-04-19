@@ -10,8 +10,12 @@ from typing import Dict, List, Optional
 from datetime import datetime
 import time
 from dataclasses import dataclass
+from signal import SIGTERM
 
 logger = logging.getLogger(__name__)
+
+# Lock directory for atomic service start
+LOCK_DIR = '/tmp/leadgen_locks'
 
 
 @dataclass
@@ -122,25 +126,59 @@ class ProcessManager:
         return [self.get_service_status(name) for name in SERVICES.keys()]
     
     def start_service(self, service_name: str) -> Dict:
-        """Start a service."""
+        """Start a service with atomic lock to prevent duplicates."""
         if service_name not in SERVICES:
             return {'success': False, 'error': f'Unknown service: {service_name}'}
         
         config = SERVICES[service_name]
         script_path = os.path.join(self.project_dir, config['script'])
         
-        # Kill any existing orphan process by script name
-        try:
-            subprocess.run(
-                ['pkill', '-9', '-f', config['script']],
-                capture_output=True
-            )
-        except Exception:
-            pass
+        # Ensure lock directory exists
+        os.makedirs(LOCK_DIR, exist_ok=True)
+        lock_file = f'{LOCK_DIR}/{service_name}.lock'
         
-        time.sleep(0.5)
+        # Try to acquire atomic lock (O_EXCL = exclusive creation)
+        try:
+            fd = os.open(lock_file, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+            os.write(fd, str(os.getpid()).encode())
+            os.close(fd)
+        except FileExistsError:
+            # Lock exists - check if holder is still alive
+            stale = False
+            try:
+                with open(lock_file, 'r') as f:
+                    lock_pid = int(f.read().strip())
+                # check if process exists (signal 0 = don't send, just check)
+                try:
+                    os.kill(lock_pid, 0)
+                except OSError:
+                    stale = True
+                    os.unlink(lock_file)
+            except (ValueError, FileNotFoundError):
+                stale = True
+            
+            if not stale:
+                return {'success': False, 'error': f'Service {service_name} start already in progress (PID: {lock_pid})'}
+            # Stale lock removed - try again
+            try:
+                fd = os.open(lock_file, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+                os.write(fd, str(os.getpid()).encode())
+                os.close(fd)
+            except Exception:
+                return {'success': False, 'error': f'Could not acquire lock for {service_name}'}
         
         try:
+            # Kill any existing orphan process by script name
+            try:
+                subprocess.run(
+                    ['pkill', '-9', '-f', config['script']],
+                    capture_output=True
+                )
+            except Exception:
+                pass
+            
+            time.sleep(0.5)
+            
             # Ensure script is executable
             os.chmod(script_path, 0o755)
             
@@ -160,16 +198,39 @@ class ProcessManager:
             # Store process reference
             self.running_processes[service_name] = process
             
-            # Record start timestamp - let dashboard poll pick up actual status
+            # Record start timestamp
             service_start_times[service_name] = datetime.now().timestamp()
+            
+            # Update lock file with actual service PID (not our PID)
+            try:
+                with open(lock_file, 'w') as f:
+                    f.write(str(process.pid))
+            except:
+                pass
+            
             return {'success': True, 'message': f'Started {service_name}', 'log_file': log_file}
+            
         except Exception as e:
+            # Release lock on failure
+            if os.path.exists(lock_file):
+                try:
+                    os.unlink(lock_file)
+                except:
+                    pass
             return {'success': False, 'error': str(e)}
     
     def stop_service(self, service_name: str) -> Dict:
         """Stop a service."""
         if service_name not in SERVICES:
             return {'success': False, 'error': f'Unknown service: {service_name}'}
+        
+        # Remove lock file if exists
+        lock_file = f'{LOCK_DIR}/{service_name}.lock'
+        if os.path.exists(lock_file):
+            try:
+                os.unlink(lock_file)
+            except:
+                pass
         
         status = self.get_service_status(service_name)
         if status.status != 'running' or not status.pid:

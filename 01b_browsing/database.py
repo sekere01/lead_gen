@@ -6,7 +6,7 @@ from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 
 from config import settings
-from shared_models import Base
+from shared_models import Base, Company, Contact, ExtractedEmail
 
 engine = create_engine(
     settings.DATABASE_URL,
@@ -47,3 +47,7 @@ def init_db():
     Base.metadata.create_all(engine)
     _ensure_indexes()
     print("Browsing database columns initialized successfully")
+
+
+# Export models for import compatibility
+__all__ = ['SessionLocal', 'init_db', 'Company', 'Contact', 'ExtractedEmail', 'get_db']

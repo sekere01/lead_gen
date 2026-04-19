@@ -29,21 +29,23 @@ def _load_config() -> dict:
 def _get_latest_index() -> str:
     """Fetch the latest CommonCrawl index dynamically."""
     global _latest_index, _index_cache_age
-    
+
     try:
         response = requests.get(
             "https://index.commoncrawl.org/collinfo.json",
             timeout=10
         )
-        if response.status_code == 200:
-            indexes = response.json()
-            if indexes and len(indexes) > 0:
-                _latest_index = indexes[0]['id']
-                logger.info(f"Using latest CommonCrawl index: {_latest_index}")
-                return _latest_index
-except Exception as e:
-    logger.warning(f"Failed to fetch latest index: {e}")
-    raise ValueError("Could not fetch CommonCrawl index — set enabled: false in config to skip")
+        if response.status_code != 200:
+            raise ValueError(f"Non-200 response: {response.status_code}")
+        indexes = response.json()
+        if not indexes or len(indexes) == 0:
+            raise ValueError("No indexes returned")
+        _latest_index = indexes[0]['id']
+        logger.info(f"Using latest CommonCrawl index: {_latest_index}")
+        return _latest_index
+    except Exception as e:
+        logger.warning(f"Failed to fetch latest index: {e}")
+        raise ValueError("Could not fetch CommonCrawl index — set enabled: false in config to skip")
 
 
 def _get_tld_for_region(region: str, config: dict) -> List[str]:
@@ -121,18 +123,18 @@ def discover_commoncrawl(keyword: str, region: str = "", max_results: int = 50) 
     # Use fast timeout - fail quick if API is slow
     timeout = 3
     
-    # Get TLD(s) for region
+# Get TLD(s) for region
     tlds = _get_tld_for_region(region, config)
-    
-# Get latest index
-  try:
-      index = _get_latest_index()
-  except ValueError:
-      logger.warning("CommonCrawl index fetch failed — skipping CommonCrawl discovery")
-      return results
-  base_url = f"https://index.commoncrawl.org/{index}"
 
-  try:
+    # Get latest index
+    try:
+        index = _get_latest_index()
+    except ValueError:
+        logger.warning("CommonCrawl index fetch failed — skipping CommonCrawl discovery")
+        return results
+    base_url = f"https://index.commoncrawl.org/{index}"
+
+    try:
         for tld in tlds:
             if len(results) >= max_results:
                 break

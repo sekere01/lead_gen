@@ -3,6 +3,9 @@
 
 cd "$(dirname "$0")/02_enrichment"
 
+# Add project root to PYTHONPATH so shared_models can be resolved
+export PYTHONPATH="/home/fisazkido/lead_gen2:$PYTHONPATH"
+
 PID_FILE="/tmp/leadgen_enrichment.pid"
 
 if [ -f "$PID_FILE" ]; then

@@ -1894,5 +1894,48 @@
     ],
     "timestamp": "2026-04-16T14:25:05.606919",
     "count": 17
+  },
+  "vans_Global": {
+    "domains": [],
+    "timestamp": "2026-04-18T15:09:06.507478",
+    "count": 0
+  },
+  "rakes_Global": {
+    "domains": [
+      "acehardware.com",
+      "bestreviews.com",
+      "bobvila.com",
+      "concretesolutionsonline.com",
+      "coronatools.com",
+      "deere.ca",
+      "deere.com",
+      "depositphotos.com",
+      "familyhandyman.com",
+      "fiskars.com",
+      "gardeningknowhow.com",
+      "gemplers.com",
+      "grokipedia.com",
+      "homebyames.com",
+      "homedepot.com",
+      "kuhn.com",
+      "landmsupply.com",
+      "lawnstarter.com",
+      "lowes.com",
+      "primedope.com",
+      "seymourmidwest.com",
+      "shazam.com",
+      "shutterstock.com",
+      "staples.com",
+      "tenor.com",
+      "thisoldhouse.com",
+      "trees.com",
+      "vecteezy.com",
+      "walmart.com",
+      "wolfgarten.us",
+      "yo-ho.com",
+      "ysnlive.com"
+    ],
+    "timestamp": "2026-04-19T02:21:56.787998",
+    "count": 32
   }
 }

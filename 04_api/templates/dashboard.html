@@ -19,8 +19,14 @@
             --success: #10b981;
             --danger: #ef4444;
             --warning: #f59e0b;
+            --radius-sm: 4px;
+        });
+
+        @keyframes fadeInStats {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
         }
-        
+
         [data-theme="dark"] {
             --bg-primary: #0f172a;
             --bg-secondary: #1e293b;
@@ -44,7 +50,7 @@
         .container { max-width: 1400px; margin: 0 auto; padding: 24px; }
         
         .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
-        .stat-card { background: var(--bg-secondary); border-radius: 12px; padding: 20px; border: 1px solid var(--border-color); }
+        .stat-card { background: var(--bg-secondary); border-radius: 12px; padding: 20px; border: 1px solid var(--border-color); animation: fadeInStats 0.6s ease-out; }
         .stat-card h3 { font-size: 13px; color: var(--text-secondary); font-weight: 500; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
         .stat-card .value { font-size: 32px; font-weight: 700; color: var(--text-primary); }
         .stat-card .value.pending { color: var(--warning); }
@@ -239,14 +245,44 @@
             70% { opacity: 1; }
             100% { left: 100%; opacity: 0; }
         }
+
+        /* === ANIMATED SKELETONS === */
+        .skeleton {
+          background: linear-gradient(90deg, var(--bg-tertiary) 25%, var(--bg-secondary) 50%, var(--bg-tertiary) 75%);
+          background-size: 200% 100%;
+          animation: shimmer 1.5s infinite;
+          border-radius: var(--radius-sm);
+        }
+
+        @keyframes shimmer {
+          0% { background-position: -200% 0; }
+          100% { background-position: 200% 0; }
+        }
+
+        .skeleton-stat {
+          height: 32px;
+          width: 60px;
+          margin-top: 8px;
+        }
+
+        .skeleton-text {
+          height: 16px;
+          width: 100%;
+          margin: 4px 0;
+        }
+
+        .skeleton-header {
+          height: 20px;
+          width: 120px;
+          margin-bottom: 12px;
+        }
     </style>
-</head>
 <body>
     <div class="header">
         <h1>Lead Gen Pipeline Dashboard</h1>
         <div style="display: flex; gap: 8px; align-items: center;">
-            <button class="btn btn-sm" id="theme-toggle" onclick="toggleTheme()">🌙</button>
-            <button class="btn btn-secondary" onclick="viewLogs()">Logs</button>
+            <button class="btn btn-sm" id="theme-toggle" onclick="toggleTheme()" aria-label="Toggle dark mode">🌙</button>
+            <button class="btn btn-secondary" onclick="viewLogs()" aria-label="View pipeline logs">Logs</button>
         </div>
     </div>
     
@@ -310,8 +346,8 @@
                 <div class="panel-header">
                     <h2>Job Queue</h2>
                     <div style="display: flex; gap: 8px;">
-                        <button class="btn btn-sm btn-secondary" onclick="showBulkJobModal()">Bulk</button>
-                        <button class="btn btn-sm btn-primary" onclick="showCreateJob()">+ New</button>
+                        <button class="btn btn-sm btn-secondary" onclick="showBulkJobModal()" aria-label="Create bulk jobs">Bulk</button>
+                        <button class="btn btn-sm btn-primary" onclick="showCreateJob()" aria-label="Create new discovery job">+ New</button>
                     </div>
                 </div>
                 <div class="panel-body" style="padding: 0; display: flex;">
@@ -336,7 +372,7 @@
         <div class="modal-content" style="max-width: 500px;">
             <div class="modal-header">
                 <h2>Bulk Create Jobs</h2>
-                <button onclick="closeModal('bulk-job-modal')">&times;</button>
+                <button onclick="closeModal('bulk-job-modal')" aria-label="Close modal">&times;</button>
             </div>
             <div class="modal-body">
                 <div class="form-group">
@@ -347,7 +383,7 @@
                     <label>Region</label>
                     <input type="text" id="bulk-region" value="Global">
                 </div>
-                <button class="btn btn-primary" onclick="createBulkJobs()">Create Jobs</button>
+                <button class="btn btn-primary" onclick="createBulkJobs()" aria-label="Create all bulk jobs">Create Jobs</button>
             </div>
         </div>
     </div>
@@ -356,7 +392,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2>Create Job</h2>
-                <button onclick="closeModal('create-job-modal')">&times;</button>
+                <button onclick="closeModal('create-job-modal')" aria-label="Close modal">&times;</button>
             </div>
             <div class="modal-body">
                 <div class="form-group">
@@ -367,7 +403,7 @@
                     <label>Region</label>
                     <input type="text" id="job-region" value="Global">
                 </div>
-                <button class="btn btn-primary" onclick="createJob()">Create</button>
+                <button class="btn btn-primary" onclick="createJob()" aria-label="Create discovery job">Create</button>
             </div>
         </div>
     </div>
@@ -502,7 +538,102 @@
 
     <script>
         const API = '/api/v1';
-        
+
+// === WebSocket Real-Time Updates ===
+let ws = null;
+let wsReconnectInterval = null;
+let wsReconnectDelay = 1000; // Start with 1 second
+let wsMaxReconnectDelay = 30000; // Max 30 seconds
+let wsConnectedOnce = false; // Track if we've ever successfully connected
+
+function initWebSocket() {
+  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+    return; // Already connected or connecting
+  }
+  
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const wsUrl = `${protocol}//${window.location.host}/api/v1/dashboard/ws`;
+  
+  console.log("Connecting to WebSocket:", wsUrl);
+  ws = new WebSocket(wsUrl);
+  
+  ws.onopen = () => {
+    console.log("WebSocket connected");
+    wsConnectedOnce = true;
+    wsReconnectDelay = 1000; // Reset delay on successful connection
+    if (wsReconnectInterval) {
+      clearInterval(wsReconnectInterval);
+      wsReconnectInterval = null;
+    }
+    showToast("Real-time updates enabled", "success");
+  };
+  
+  ws.onmessage = (event) => {
+    try {
+      const message = JSON.parse(event.data);
+      if (message.type === "initial") {
+        renderDashboardData(message.data);
+      } else if (message.type === "update") {
+        // Partial update - just update the relevant section
+        if (message.data.metrics) {
+          updateDashboardMetrics(message.data.metrics);
+        }
+        if (message.data.pipeline) {
+          renderPipelineMap(message.data.pipeline);
+          detectBottlenecks(message.data.pipeline);
+        }
+      }
+    } catch (e) {
+      console.error("WebSocket message error:", e);
+    }
+  };
+  
+  ws.onclose = () => {
+    console.log("WebSocket disconnected");
+    // Only schedule reconnect if we've ever had a successful connection
+    if (wsConnectedOnce) {
+      scheduleReconnect();
+    } else {
+      console.log("WebSocket not available - running in polling mode");
+    }
+  };
+  
+  ws.onerror = (error) => {
+    console.error("WebSocket error:", error);
+  };
+}
+
+function scheduleReconnect() {
+  if (wsReconnectInterval) return;
+  
+  wsReconnectInterval = setInterval(() => {
+    wsReconnectDelay = Math.min(wsReconnectDelay * 2, wsMaxReconnectDelay);
+    console.log(`Reconnection attempt in ${wsReconnectDelay}ms...`);
+    initWebSocket();
+  }, wsReconnectDelay);
+}
+
+function updateDashboardMetrics(metrics) {
+  if (metrics.companies_total !== undefined) {
+    animateCounter(document.getElementById('total-companies'), metrics.companies_total);
+  }
+  if (metrics.contacts_total !== undefined) {
+    animateCounter(document.getElementById('total-contacts'), metrics.contacts_total);
+  }
+  if (metrics.verified_count !== undefined) {
+    animateCounter(document.getElementById('verified-contacts'), metrics.verified_count);
+  }
+  if (metrics.pending_jobs !== undefined) {
+    animateCounter(document.getElementById('pending-jobs'), metrics.pending_jobs);
+  }
+  if (metrics.completed_jobs !== undefined) {
+    animateCounter(document.getElementById('completed-jobs'), metrics.completed_jobs);
+  }
+  if (metrics.failed_jobs !== undefined) {
+    animateCounter(document.getElementById('failed-jobs'), metrics.failed_jobs);
+  }
+}
+         
         // Theme toggle
         function toggleTheme() {
             const html = document.documentElement;
@@ -537,6 +668,33 @@
             dashboardCacheTime = Date.now();
         }
 
+// Skeleton loading helpers
+function showSkeleton() {
+  // Add skeleton class to existing stat elements instead of replacing them
+  const ids = ['total-companies', 'total-contacts', 'verified-contacts', 'pending-jobs', 'completed-jobs', 'failed-jobs'];
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.classList.add('skeleton', 'skeleton-stat');
+    }
+  });
+  const pipelineMap = document.getElementById('pipeline-map');
+  if (pipelineMap) {
+    pipelineMap.innerHTML = '<div class="skeleton" style="height: 200px; width: 100%;"></div>';
+  }
+}
+
+function hideSkeleton() {
+  // Remove skeleton classes from stat elements
+  const ids = ['total-companies', 'total-contacts', 'verified-contacts', 'pending-jobs', 'completed-jobs', 'failed-jobs'];
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.classList.remove('skeleton', 'skeleton-stat');
+    }
+  });
+}
+
         async function loadDashboard(forceRefresh = false) {
             // Try cache first for instant load
             const cached = getCachedDashboard();
@@ -546,11 +704,8 @@
                 console.log('Using cached dashboard data');
                 renderDashboardData(cached);
             } else if (!cached) {
-                // Show loading state if no cache available
-                const pipelineMap = document.getElementById('pipeline-map');
-                if (pipelineMap) {
-                    pipelineMap.innerHTML = '<div class="loading" style="padding:20px;text-align:center">Loading pipeline...</div>';
-                }
+    // Show skeleton loading screens for instant UX - but don't replace existing elements
+    showSkeleton();
             }
             
             try {
@@ -569,12 +724,12 @@
                 // Update cache
                 setCachedDashboard(data);
                 
-                document.getElementById('total-companies').textContent = data.metrics.companies_total;
-                document.getElementById('total-contacts').textContent = data.metrics.contacts_total;
-                document.getElementById('verified-contacts').textContent = data.metrics.verified_count;
-                document.getElementById('pending-jobs').textContent = data.metrics.pending_jobs;
-                document.getElementById('completed-jobs').textContent = data.metrics.completed_jobs;
-                document.getElementById('failed-jobs').textContent = data.metrics.failed_jobs;
+                animateCounter(document.getElementById('total-companies'), data.metrics.companies_total);
+                animateCounter(document.getElementById('total-contacts'), data.metrics.contacts_total);
+                animateCounter(document.getElementById('verified-contacts'), data.metrics.verified_count);
+                animateCounter(document.getElementById('pending-jobs'), data.metrics.pending_jobs);
+                animateCounter(document.getElementById('completed-jobs'), data.metrics.completed_jobs);
+                animateCounter(document.getElementById('failed-jobs'), data.metrics.failed_jobs);
                 
                 renderPipelineMap(data.pipeline);
                 
@@ -582,6 +737,8 @@
                 detectBottlenecks(data.pipeline);
                 
                 // Load metrics chart
+    // Hide skeletons once data is loaded
+    hideSkeleton();
                 if (document.getElementById('metricsChart')) {
                     try {
                         if (!metricsChart) {
@@ -672,18 +829,40 @@
                 setTimeout(() => toast.remove(), 300);
             }, 4000);
         }
+// Smooth counter animation
+function animateCounter(element, target, duration = 1000) {
+  if (!element) {
+    console.warn('animateCounter: element not found');
+    return;
+  }
+  const start = 0;
+  const increment = target / (duration / 16);
+  let current = 0;
+  
+  function update() {
+    current += increment;
+    if (current < target) {
+      element.textContent = Math.floor(current);
+      requestAnimationFrame(update);
+    } else {
+      element.textContent = target;
+    }
+  }
+  update();
+}
+
 
         function renderDashboardData(data) {
             // Reset exponential backoff after successful refresh
             window.serviceActionCount = 0;
             
             // Render pipeline data (shared between cache and fresh)
-            document.getElementById('total-companies').textContent = data.metrics.companies_total;
-            document.getElementById('total-contacts').textContent = data.metrics.contacts_total;
-            document.getElementById('verified-contacts').textContent = data.metrics.verified_count;
-            document.getElementById('pending-jobs').textContent = data.metrics.pending_jobs;
-            document.getElementById('completed-jobs').textContent = data.metrics.completed_jobs;
-            document.getElementById('failed-jobs').textContent = data.metrics.failed_jobs;
+            animateCounter(document.getElementById('total-companies'), data.metrics.companies_total);
+            animateCounter(document.getElementById('total-contacts'), data.metrics.contacts_total);
+            animateCounter(document.getElementById('verified-contacts'), data.metrics.verified_count);
+            animateCounter(document.getElementById('pending-jobs'), data.metrics.pending_jobs);
+            animateCounter(document.getElementById('completed-jobs'), data.metrics.completed_jobs);
+            animateCounter(document.getElementById('failed-jobs'), data.metrics.failed_jobs);
             renderPipelineMap(data.pipeline);
         }
         
@@ -1594,7 +1773,10 @@
         }
         
         // loadDashboard() already fetches job queue data internally
-        loadDashboard();
+        document.addEventListener('DOMContentLoaded', function() {
+            initWebSocket();
+            loadDashboard();
+        });
     </script>
 </body>
 </html>

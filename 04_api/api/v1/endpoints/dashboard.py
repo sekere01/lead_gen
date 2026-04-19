@@ -14,6 +14,17 @@ from services.process_manager import process_manager
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 
 
+def _format_uptime(seconds: Optional[int]) -> str:
+    """Format uptime in seconds to human readable string."""
+    if not seconds:
+        return '--'
+    h = seconds // 3600
+    m = (seconds % 3600) // 60
+    if h > 0:
+        return f'{h}h {m}m'
+    return f'{m}m'
+
+
 class CompanyCountByStatus(BaseModel):
     status: str
     count: int
@@ -48,6 +59,7 @@ class DashboardStats(BaseModel):
     metrics: PipelineMetrics
     job_queue: List[JobQueueItem]
     services: dict
+    pipeline: dict
 
 
 @router.get("/stats", response_model=DashboardStats)
@@ -103,9 +115,61 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
         for job in queue_jobs
     ]
     
-    # Service status
+# Service status
     services_status = process_manager.get_health_status()
-    
+
+    # Queue depths per pipeline stage
+    discovery_queue = db.query(DiscoveryJob).filter(DiscoveryJob.status == 'pending').count()
+    browsing_queue = db.query(Company).filter(
+        Company.status == 'discovered',
+        Company.discovery_score >= 2
+    ).count()
+    enrichment_queue = db.query(Company).filter(Company.status == 'browsed').count()
+    verification_queue = db.query(Contact).filter(Contact.verification_status == 'pending').count()
+
+    # Processed counts per stage
+    discovery_processed = db.query(DiscoveryJob).filter(DiscoveryJob.status == 'completed').count()
+    browsing_processed = db.query(Company).filter(Company.status == 'browsed').count()
+    enrichment_processed = db.query(Company).filter(Company.status == 'enriched').count()
+    verification_processed = db.query(Contact).filter(Contact.is_verified == True).count()
+
+    # Build service status lookup
+    services_lookup = {s['name']: s for s in services_status.get('services', [])}
+
+    # Build pipeline object matching frontend expectations
+    pipeline = {
+        'discovery': {
+            'status': services_lookup.get('discovery', {}).get('status', 'stopped'),
+            'queue': discovery_queue,
+            'uptime': _format_uptime(services_lookup.get('discovery', {}).get('uptime')),
+            'processed': discovery_processed,
+        },
+        'browsing': {
+            'status': services_lookup.get('browsing', {}).get('status', 'stopped'),
+            'queue': browsing_queue,
+            'uptime': _format_uptime(services_lookup.get('browsing', {}).get('uptime')),
+            'processed': browsing_processed,
+        },
+        'enrichment': {
+            'status': services_lookup.get('enrichment', {}).get('status', 'stopped'),
+            'queue': enrichment_queue,
+            'uptime': _format_uptime(services_lookup.get('enrichment', {}).get('uptime')),
+            'processed': enrichment_processed,
+        },
+        'verification': {
+            'status': services_lookup.get('verification', {}).get('status', 'stopped'),
+            'queue': verification_queue,
+            'uptime': _format_uptime(services_lookup.get('verification', {}).get('uptime')),
+            'processed': verification_processed,
+        },
+        'sources': {
+            'ddgs': {'status': 'active'},
+            'searxng': {'status': 'active'},
+            'commoncrawl': {'status': 'active'},
+            'theharvester': {'status': 'active'},
+        }
+    }
+
     metrics = PipelineMetrics(
         companies_total=companies_total,
         companies_by_status=companies_by_status,
@@ -120,7 +184,8 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
     return DashboardStats(
         metrics=metrics,
         job_queue=job_queue,
-        services=services_status
+        services=services_status,
+        pipeline=pipeline
     )
 
 
@@ -157,3 +222,74 @@ def get_job_companies(job_id: int, limit: int = 10, db: Session = Depends(get_db
             for c in companies
         ]
     }
+
+# WebSocket real-time updates
+from fastapi import WebSocket, WebSocketDisconnect
+from typing import List
+import json
+
+class ConnectionManager:
+    """Manage WebSocket connections for real-time dashboard updates."""
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
+    
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+    
+    def disconnect(self, websocket: WebSocket):
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
+    
+    async def broadcast(self, message: dict):
+        """Broadcast message to all connected clients."""
+        disconnected = []
+        for connection in self.active_connections:
+            try:
+                await connection.send_text(json.dumps(message))
+            except:
+                disconnected.append(connection)
+        
+        # Clean up disconnected clients
+        for conn in disconnected:
+            self.disconnect(conn)
+
+manager = ConnectionManager()
+
+
+@router.websocket("/ws")
+async def dashboard_websocket(websocket: WebSocket):
+    """WebSocket endpoint for real-time dashboard updates."""
+    print(f"WebSocket connection request received")  # Debug log
+    await manager.connect(websocket)
+    try:
+        # Send initial dashboard data
+        db = next(get_db())
+        initial_data = get_dashboard_stats(db)
+        # Convert Pydantic model to dict for JSON serialization
+        if hasattr(initial_data, 'model_dump'):
+            initial_dict = initial_data.model_dump()
+        else:
+            initial_dict = dict(initial_data)
+        await websocket.send_text(json.dumps({
+            "type": "initial",
+            "data": initial_dict
+        }))
+        
+        # Keep connection alive and handle incoming messages
+        while True:
+            data = await websocket.receive_text()
+            # Echo back for ping/pong
+            await websocket.send_text(json.dumps({"type": "pong"}))
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+    except Exception as e:
+        print(f"WebSocket error: {e}")
+        manager.disconnect(websocket)
+
+
+def broadcast_update(update_type: str, data: dict):
+    """Broadcast an update to all connected WebSocket clients."""
+    import asyncio
+    message = {"type": update_type, "data": data}
+    asyncio.create_task(manager.broadcast(message))

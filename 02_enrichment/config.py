@@ -12,6 +12,8 @@ load_dotenv(env_path)
 class Settings:
     DATABASE_URL: str = os.getenv("DATABASE_URL")  # REQUIRED - no default
     ENRICHER_POLL_INTERVAL: int = int(os.getenv("ENRICHER_POLL_INTERVAL", "60"))
+    MAX_CONCURRENT_CONTAINERS: int = int(os.getenv("MAX_CONCURRENT_CONTAINERS", "5"))
+    ENRICHMENT_TIMEOUT_DOCKER: int = int(os.getenv("ENRICHMENT_TIMEOUT_DOCKER", "120"))
     
     # theHarvester API config
     HARVESTER_API_URL: str = os.getenv("HARVESTER_API_URL", "http://localhost:5000")

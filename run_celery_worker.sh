@@ -16,8 +16,8 @@ fi
 # Redis URL (default to localhost if not set)
 REDIS_URL=${REDIS_URL:-redis://localhost:6379/0}
 
-# Queue to process (default: all queues)
-QUEUE=${1:-discovery,browsing,enrichment,verification}
+# Queue to process (default: all queues including default for metrics)
+QUEUE=${1:-discovery,browsing,enrichment,verification,default}
 
 echo "Starting Celery worker for queues: $QUEUE"
 echo "Redis broker: $REDIS_URL"

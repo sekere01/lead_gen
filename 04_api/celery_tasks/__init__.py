@@ -35,4 +35,13 @@ celery_app.conf.task_routes = {
     "celery_tasks.tasks.process_browsing": {"queue": "browsing"},
     "celery_tasks.tasks.process_enrichment": {"queue": "enrichment"},
     "celery_tasks.tasks.process_verification": {"queue": "verification"},
+    "celery_tasks.tasks.collect_metrics": {"queue": "default"},
+}
+
+# Periodic task schedule (Celery Beat)
+celery_app.conf.beat_schedule = {
+    "collect-metrics-every-30-seconds": {
+        "task": "celery_tasks.tasks.collect_metrics",
+        "schedule": 30.0,  # Every 30 seconds
+    },
 }

@@ -308,4 +308,91 @@ def enqueue_discovery_jobs():
         db.close()
 
 
+@celery_app.task(bind=True, name="celery_tasks.tasks.collect_metrics")
+def collect_metrics(self):
+    """
+    Periodic task that collects service metrics every 30 seconds.
+    Stores current counts in ServiceMetrics table for the dashboard chart.
+    """
+    from shared_models import ServiceMetrics, Company, Contact, DiscoveryJob
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from datetime import timedelta
+    
+    DATABASE_URL = os.getenv("DATABASE_URL")
+    if not DATABASE_URL:
+        return {"error": "DATABASE_URL not set"}
+    
+    engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_size=1, max_overflow=1)
+    SessionLocal = sessionmaker(bind=engine)
+    db = SessionLocal()
+    
+    try:
+        timestamp = datetime.now(timezone.utc)
+        
+        # Get current counts
+        companies_total = db.query(Company).count()
+        contacts_total = db.query(Contact).count()
+        verified_count = db.query(Contact).filter(Contact.verification_status == 'valid_verified').count()
+        jobs_pending = db.query(DiscoveryJob).filter(DiscoveryJob.status == 'pending').count()
+        jobs_completed = db.query(DiscoveryJob).filter(DiscoveryJob.status == 'completed').count()
+        jobs_failed = db.query(DiscoveryJob).filter(DiscoveryJob.status == 'failed').count()
+        
+        # Browse service metrics
+        pages_browsed = db.query(Company).filter(Company.status == 'browsed').count()
+        contacts_found = db.query(Contact).filter(Contact.source_url.like('%browse%')).count()
+        
+        # Enrichment service metrics
+        emails_collected = db.query(Contact).filter(
+            Contact.first_name.isnot(None),
+            Contact.email.isnot(None)
+        ).count()
+        domains_processed = db.query(Company).filter(Company.status == 'enriched').count()
+        
+        # Metrics to record
+        metrics_data = [
+            # Discovery metrics
+            ('discovery', 'companies_total', companies_total),
+            ('discovery', 'jobs_pending', jobs_pending),
+            ('discovery', 'jobs_completed', jobs_completed),
+            ('discovery', 'jobs_failed', jobs_failed),
+            # Browsing metrics
+            ('browsing', 'pages_browsed', pages_browsed),
+            ('browsing', 'contacts_found', contacts_found),
+            # Enrichment metrics  
+            ('enrichment', 'emails_collected', emails_collected),
+            ('enrichment', 'domains_processed', domains_processed),
+            # Verification metrics
+            ('verification', 'contacts_total', contacts_total),
+            ('verification', 'verified_count', verified_count),
+        ]
+        
+        for service, metric, value in metrics_data:
+            record = ServiceMetrics(
+                service=service,
+                metric=metric,
+                value=value,
+                recorded_at=timestamp
+            )
+            db.add(record)
+        
+        db.commit()
+        
+        # Clean up old data (> 24 hours)
+        cutoff = timestamp - timedelta(hours=24)
+        deleted = db.query(ServiceMetrics).filter(
+            ServiceMetrics.recorded_at < cutoff
+        ).delete()
+        if deleted:
+            db.commit()
+        
+        return {"recorded": len(metrics_data), "cleaned_up": deleted}
+    
+    except Exception as e:
+        logger.error(f"Error collecting metrics: {e}")
+        return {"error": str(e)}
+    finally:
+        db.close()
+
+
 from datetime import datetime, timezone

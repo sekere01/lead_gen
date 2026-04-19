@@ -53,6 +53,7 @@ def _ensure_indexes():
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_contact_verification_status ON contacts(verification_status)"))
         conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS idx_contacts_email_lower ON contacts (LOWER(email))"))
         conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS idx_job_stats_type_status ON job_stats(job_type, status)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_metrics_service_time ON service_metrics(service, recorded_at)"))
         conn.commit()
 
 

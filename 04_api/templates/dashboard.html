@@ -911,10 +911,28 @@ function animateCounter(element, target, duration = 1000) {
                         ctx.fillText(`No data in last ${windowDisplay} — services may not have written metrics yet`, canvas.width / 2, canvas.height / 2);
                     }
                     return;
+}
+                 
+                // Format timestamp based on window selection
+                function formatTimestamp(ts, window) {
+                    const date = new Date(ts);
+                    const month = String(date.getMonth() + 1).padStart(2, '0');
+                    const day = String(date.getDate()).padStart(2, '0');
+                    let hours = date.getHours();
+                    const minutes = String(date.getMinutes()).padStart(2, '0');
+                    const ampm = hours >= 12 ? 'PM' : 'AM';
+                    hours = hours % 12;
+                    hours = hours ? hours : 12;
+                    
+                    if (window === '24h') {
+                        return `${month}/${day} ${String(hours).padStart(2, '0')} ${ampm}`;
+                    } else {
+                        return `${String(hours).padStart(2, '0')}:${minutes} ${ampm}`;
+                    }
                 }
                 
                 const ctx = canvas.getContext('2d');
-                const labels = data.data.map(d => d.timestamp);
+                const labels = data.data.map(d => formatTimestamp(d.timestamp, currentWindow));
                 
                 // Get all unique metric keys (exclude timestamp)
                 const allMetricKeys = new Set();
@@ -926,7 +944,7 @@ function animateCounter(element, target, duration = 1000) {
                 
                 // Primary metrics per service (for "all" view)
                 const servicePrimaryMetrics = {
-                    'discovery': 'companies_found',
+                    'discovery': 'companies_total',
                     'browsing': 'pages_browsed',
                     'enrichment': 'emails_collected',
                     'verification': 'verified_count'
@@ -962,9 +980,11 @@ function animateCounter(element, target, duration = 1000) {
                     // "All Services" view - one line per service with primary metric
                     Object.keys(servicePrimaryMetrics).forEach(svc => {
                         const primaryMetric = servicePrimaryMetrics[svc];
+                        // For "all", metrics are prefixed with service name
+                        const fullMetricKey = `${svc}_${primaryMetric}`;
                         const values = data.data.map(d => {
-                            // Find entries for this service
-                            const svcData = d[primaryMetric] || 0;
+                            // Find entries for this service (prefixed metric)
+                            const svcData = d[fullMetricKey] || d[primaryMetric] || 0;
                             return svcData;
                         });
                         datasets.push({

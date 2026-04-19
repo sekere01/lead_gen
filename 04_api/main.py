@@ -3,6 +3,12 @@ Lead Generation Engine - REST API
 FastAPI application for managing discovery jobs, companies, contacts, and verification.
 Entry: python main.py
 """
+import sys
+import os
+
+# Add project root to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse

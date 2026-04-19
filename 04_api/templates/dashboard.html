@@ -283,6 +283,7 @@
         <div style="display: flex; gap: 8px; align-items: center;">
             <button class="btn btn-sm" id="theme-toggle" onclick="toggleTheme()" aria-label="Toggle dark mode">🌙</button>
             <button class="btn btn-secondary" onclick="viewLogs()" aria-label="View pipeline logs">Logs</button>
+            <button class="btn btn-secondary" onclick="openExportModal()" aria-label="Export emails">Export</button>
         </div>
     </div>
     
@@ -416,6 +417,51 @@
             </div>
             <div class="modal-body">
                 <div class="logs-container" id="logs-content"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="export-modal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h2>Export Emails</h2>
+                <button onclick="closeModal('export-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div style="display: flex; gap: 12px; margin-bottom: 12px;">
+                    <div class="form-group" style="flex: 1;">
+                        <label>Format</label>
+                        <select id="export-format">
+                            <option value="txt">TXT</option>
+                            <option value="csv">CSV</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label>Verified</label>
+                        <select id="export-verified">
+                            <option value="true">Verified only</option>
+                            <option value="false">All</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Search (filter emails)</label>
+                    <input type="text" id="export-search" placeholder="gmail, yahoo, sales, @domain.com" autocomplete="off" oninput="handleExportSearchInput()">
+                </div>
+                <div class="form-group">
+                    <label>Preview Limit</label>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <input type="number" id="export-preview-limit" value="50" min="1" style="width: 80px;">
+                        <label style="display: flex; align-items: center; gap: 4px; font-size: 13px; cursor: pointer;">
+                            <input type="checkbox" id="export-preview-all" onchange="togglePreviewAll()">
+                            All
+                        </label>
+                    </div>
+                </div>
+                <div id="export-count" style="padding: 8px 12px; background: var(--bg-tertiary); border-radius: 6px; margin-bottom: 8px; font-size: 13px;">
+                    Loading...</div>
+                <div id="export-preview-list" style="max-height: 180px; overflow-y: auto; background: var(--bg-primary); border-radius: 6px; padding: 8px; font-size: 11px; font-family: monospace; white-space: pre-wrap; word-break: break-all;"></div>
+                <button class="btn btn-primary" style="width: 100%; margin-top: 12px;" onclick="downloadExport()">Download</button>
             </div>
         </div>
     </div>
@@ -1689,6 +1735,83 @@ function animateCounter(element, target, duration = 1000) {
                 clearInterval(serviceCounterInterval);
                 serviceCounterInterval = null;
             }
+        }
+
+        let exportPreviewTimeout = null;
+
+        async function openExportModal() {
+            document.getElementById('export-modal').classList.add('active');
+            fetchExportPreview();
+        }
+
+        function handleExportSearchInput() {
+            if (exportPreviewTimeout) clearTimeout(exportPreviewTimeout);
+            exportPreviewTimeout = setTimeout(fetchExportPreview, 300);
+        }
+
+        function togglePreviewAll() {
+            const isAll = document.getElementById('export-preview-all').checked;
+            document.getElementById('export-preview-limit').disabled = isAll;
+            fetchExportPreview();
+        }
+
+        async function fetchExportPreview() {
+            const verified = document.getElementById('export-verified').value === 'true';
+            const isAll = document.getElementById('export-preview-all').checked;
+            const limit = isAll ? 1000 : parseInt(document.getElementById('export-preview-limit').value) || 50;
+            const search = document.getElementById('export-search').value.trim();
+            
+            let params = new URLSearchParams();
+            params.append('is_verified', verified);
+            params.append('limit', Math.min(limit, 1000));
+            
+            if (search) {
+                params.append('search', search);
+            }
+            
+            try {
+                const res = await fetch(`${API}/export/emails/preview?${params.toString()}`);
+                const data = await res.json();
+                
+                const totalCount = data.count;
+                const displayedCount = Math.min(limit, totalCount);
+                const emailWord = totalCount === 1 ? 'email' : 'emails';
+                
+                let countText;
+                if (isAll) {
+                    countText = `Showing all ${totalCount} of ${totalCount} verified ${emailWord}`;
+                } else if (displayedCount >= totalCount) {
+                    countText = `Showing ${displayedCount} verified ${emailWord}`;
+                } else {
+                    countText = `Showing ${displayedCount} of ${totalCount} verified ${emailWord}`;
+                }
+                
+                document.getElementById('export-count').textContent = countText;
+                
+                document.getElementById('export-preview-list').textContent = 
+                    data.emails.join('\n') || '(no emails found)';
+            } catch (e) {
+                document.getElementById('export-count').textContent = 'Error loading preview';
+            }
+        }
+
+        async function downloadExport() {
+            const format = document.getElementById('export-format').value;
+            const verified = document.getElementById('export-verified').value === 'true';
+            const search = document.getElementById('export-search').value.trim();
+            
+            let params = new URLSearchParams();
+            params.append('format', format);
+            params.append('is_verified', verified);
+            params.append('limit', 'all');
+            
+            if (search) {
+                params.append('search', search);
+            }
+            
+            const url = `${API}/export/emails?${params.toString()}`;
+            window.open(url, '_blank');
+            closeModal('export-modal');
         }
         
         // Close modal when clicking outside

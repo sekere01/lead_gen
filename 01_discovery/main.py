@@ -174,7 +174,8 @@ def process_job(job, db) -> bool:
                     'discovery_score': score,
                     'lead_source': 'discoverer',
                     'status': 'discovered',
-                    'is_active': True
+                    'is_active': True,
+                    'job_id': job.id
                 })
 
                 # Save batch when full

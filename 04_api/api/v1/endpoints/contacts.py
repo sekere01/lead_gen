@@ -1,7 +1,7 @@
 """
 Contacts API endpoints.
 """
-from typing import List, Optional
+from typing import Optional
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -27,7 +27,7 @@ class ContactResponse(BaseModel):
         from_attributes = True
 
 
-@router.get("")  # response_model removed for error handling
+@router.get("")
 def list_contacts(
     status: Optional[str] = Query(None, alias="verification_status"),
     is_verified: Optional[bool] = Query(None),

@@ -6,3 +6,4 @@ dnspython>=2.0.0
 ddgs>=9.0.0
 requests>=2.31.0
 PyYAML>=6.0.0
+groq>=0.4.0

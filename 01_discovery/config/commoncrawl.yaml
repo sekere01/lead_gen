@@ -1,9 +1,11 @@
 # CommonCrawl configuration
-enabled: false  # CommonCrawl API returning 504 timeouts - disabled for now
+enabled: true  # Enabled for broader domain discovery
 max_results: 500
-fallback_max_results: 200
-min_results_before_fallback: 50
-timeout: 15
+fallback_max_results: 300
+min_results_before_fallback: 30
+timeout: 30  # Increased from 15 for slow connections
+retry_count: 3  # NEW: retries on timeout
+keyword_count: 15  # Number of LLM-generated keywords to use
 
 # TLD mapping for regions
 region_tld_map:

@@ -24,5 +24,13 @@ class Settings:
     SEARCH_DDGS_DELAY: int = int(os.getenv("SEARCH_DDGS_DELAY", "2"))
     SEARCH_SEARXNG_DELAY: int = int(os.getenv("SEARCH_SEARXNG_DELAY", "1"))
 
+    # Groq LLM settings
+    GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
+    GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
+    GROQ_QUERY_COUNT: int = int(os.getenv("GROQ_QUERY_COUNT", "50"))
+    DDGS_QUERY_COUNT: int = int(os.getenv("DDGS_QUERY_COUNT", "15"))
+    COMMONCRAWL_KEYWORD_COUNT: int = int(os.getenv("COMMONCRAWL_KEYWORD_COUNT", "15"))
+    TLD_COUNT: int = int(os.getenv("TLD_COUNT", "10"))
+
 
 settings = Settings()

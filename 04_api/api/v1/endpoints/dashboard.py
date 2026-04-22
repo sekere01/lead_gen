@@ -14,6 +14,12 @@ from services.process_manager import process_manager
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 
 
+class MetricWrite(BaseModel):
+    service: str
+    metric: str
+    value: float
+
+
 def _format_uptime(seconds: Optional[int]) -> str:
     """Format uptime in seconds to human readable string."""
     if not seconds:
@@ -270,6 +276,37 @@ def get_dashboard_metrics(service: str = "discovery", window: str = "5m", db: Se
     except Exception as e:
         # Graceful degradation - return empty on error
         return {"data": []}
+
+
+@router.post("/metrics")
+def write_metric(payload: MetricWrite, db: Session = Depends(get_db)):
+    """Write a single metric to ServiceMetrics table."""
+    from fastapi import HTTPException
+    from shared_models import ServiceMetrics
+    from datetime import datetime, timezone
+
+    try:
+        recorded_at = datetime.now(timezone.utc)
+        record = ServiceMetrics(
+            service=payload.service,
+            metric=payload.metric,
+            value=payload.value,
+            recorded_at=recorded_at,
+        )
+        db.add(record)
+        db.commit()
+        return {
+            "status": "ok",
+            "recorded": {
+                "service": payload.service,
+                "metric": payload.metric,
+                "value": payload.value,
+                "recorded_at": recorded_at.isoformat(),
+            },
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/job/{job_id}/companies")

@@ -2,8 +2,10 @@
 import json
 import logging
 import requests
+import time
 from typing import List, Dict, Any, Optional
 from urllib.parse import urlparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import yaml
 import os
 
@@ -30,9 +32,12 @@ def _get_latest_index() -> str:
     """Fetch the latest CommonCrawl index dynamically."""
     global _latest_index, _index_cache_age
 
+    headers = {'User-Agent': 'LeadGenDiscovery/1.0 (contact@example.com)'}
+
     try:
         response = requests.get(
             "https://index.commoncrawl.org/collinfo.json",
+            headers=headers,
             timeout=10
         )
         if response.status_code != 200:
@@ -94,139 +99,141 @@ def _extract_domain(url: str) -> Optional[str]:
         return None
 
 
-def discover_commoncrawl(keyword: str, region: str = "", max_results: int = 50) -> List[Dict[str, Any]]:
+def discover_commoncrawl(keyword: str, region: str = "", max_results: int = 50,
+                           keywords: List[str] = None) -> List[Dict[str, Any]]:
     """
     Discover domains via CommonCrawl CDX API.
-    
+    Uses parallel TLD queries for faster execution.
+
     Args:
-        keyword: Search keyword
-        region: Target region (e.g., 'nigeria', 'china', or 'global')
+        keyword: Industry keyword (for fallback if keywords not provided)
+        region: Target region for TLD selection
         max_results: Maximum results to return
-    
-    Returns:
-        List of domain dictionaries
+        keywords: Optional list of URL path keywords (single words, no spaces)
+                  If not provided, uses keyword parameter as fallback
     """
     results = []
     seen_domains = set()
-    
+
     config = _load_config()
-    
-    # Skip if disabled in config
+
     if not config.get('enabled', False):
         logger.info("CommonCrawl disabled in config - skipping")
         return results
-    
+
     max_results = config.get('max_results', max_results)
     fallback_max = config.get('fallback_max_results', 200)
-    min_before_fallback = config.get('min_results_before_fallback', 50)
-    
-    # Use fast timeout - fail quick if API is slow
-    timeout = 3
-    
-# Get TLD(s) for region
+    min_before_fallback = config.get('min_results_before_fallback', 30)
+    timeout = config.get('timeout', 15)
+    retry_count = config.get('retry_count', 3)
+
     tlds = _get_tld_for_region(region, config)
 
-    # Get latest index
     try:
         index = _get_latest_index()
     except ValueError:
-        logger.warning("CommonCrawl index fetch failed — skipping CommonCrawl discovery")
+        logger.warning("CommonCrawl index fetch failed — skipping CommonCrawl discovery (service may be down)")
         return results
+
     base_url = f"https://index.commoncrawl.org/{index}"
 
+    # Build keyword list for pattern matching
+    # Use provided keywords, or fall back to keyword-based patterns
+    if keywords:
+        keyword_patterns = keywords
+    elif keyword:
+        keyword_patterns = [keyword.lower().replace(' ', '-')]
+    else:
+        keyword_patterns = []
+
+    # Check if main API is reachable with a quick probe
+    _headers = {'User-Agent': 'LeadGenDiscovery/1.0 (contact@example.com)'}
     try:
-        for tld in tlds:
-            if len(results) >= max_results:
+        probe_response = requests.get(base_url, params={'url': '*.com/', 'output': 'json', 'limit': 1}, headers=_headers, timeout=5)
+        if probe_response.status_code != 200:
+            logger.warning(f"CommonCrawl API unhealthy ({probe_response.status_code}) — skipping")
+            return results
+    except Exception as e:
+        logger.warning(f"CommonCrawl API unreachable: {e} — skipping")
+        return results
+
+    def query_tld(tld: str) -> List[Dict[str, Any]]:
+        """Query a single TLD with multiple keyword patterns."""
+        tld_results = []
+
+        headers = {
+            'User-Agent': 'LeadGenDiscovery/1.0 (contact@example.com)'
+        }
+
+        # Build patterns from keywords
+        if keyword_patterns:
+            patterns = [f"*.{tld}/%{kw}%" for kw in keyword_patterns]
+        else:
+            patterns = [f"*.{tld}/"]
+
+        for pattern in patterns:
+            if len(tld_results) >= max_results:
                 break
-            
-            # Quick health check first
-            if not results and tld != tlds[0]:
-                logger.info("CommonCrawl skipping - no results from first query")
-                break
-            
-            # Primary query: TLD bulk pull
-            params = {
-                'url': f'*.{tld}/',
-                'output': 'json',
-                'filter': 'statuscode:200',
-                'limit': max_results,
-                'matchType': 'domain',
-            }
-            
-            logger.info(f"CommonCrawl primary query: *.{tld}/")
-            
-            try:
-                response = requests.get(base_url, params=params, timeout=timeout)
-                
-                if response.status_code == 200:
-                    lines = response.text.strip().split('\n')
-                    
-                    for line in lines:
-                        if len(results) >= max_results:
-                            break
-                        
-                        try:
-                            data = json.loads(line)
-                            url = data.get('url', '')
-                            domain = _extract_domain(url)
-                            
-                            if domain and domain not in seen_domains:
-                                seen_domains.add(domain)
-                                results.append({
-                                    'domain': domain,
-                                    'source': 'commoncrawl',
-                                    'score': 2  # Higher score for TLD-based results
-                                })
-                        except json.JSONDecodeError:
-                            continue
-                        
-            except Exception as e:
-                logger.warning(f"CommonCrawl primary query failed for .{tld}: {e}")
-            
-            # Fallback: keyword in URL path (if primary returned too few results)
-            if len(results) < min_before_fallback and keyword:
-                keyword_lower = keyword.lower().replace(' ', '')
-                
-                fallback_params = {
-                    'url': f'*.{tld}/%{keyword_lower}%',
-                    'output': 'json',
-                    'filter': 'statuscode:200',
-                    'limit': fallback_max,
-                }
-                
-                logger.info(f"CommonCrawl fallback query: *.{tld}/%{keyword_lower}%")
-                
+
+            for attempt in range(retry_count):
                 try:
-                    response = requests.get(base_url, params=fallback_params, timeout=timeout)
-                    
+                    # Extract keyword from pattern for logging
+                    pattern_kw = pattern.split('/%')[-1].rstrip('%') if '%' in pattern else ''
+
+                    params = {
+                        'url': pattern,
+                        'output': 'json',
+                        'filter': 'statuscode:200',
+                        'limit': max_results,
+                    }
+                    logger.info(f"CommonCrawl query: {pattern}")
+
+                    response = requests.get(base_url, params=params, headers=headers, timeout=timeout)
+
                     if response.status_code == 200:
                         lines = response.text.strip().split('\n')
-                        
+
                         for line in lines:
-                            if len(results) >= max_results * 1.5:
+                            if len(tld_results) >= max_results:
                                 break
-                            
+
                             try:
                                 data = json.loads(line)
                                 url = data.get('url', '')
                                 domain = _extract_domain(url)
-                                
+
                                 if domain and domain not in seen_domains:
                                     seen_domains.add(domain)
-                                    results.append({
+                                    tld_results.append({
                                         'domain': domain,
-                                        'source': 'commoncrawl_fallback',
-                                        'score': 1  # Lower score for fallback results
+                                        'source': 'commoncrawl',
+                                        'score': 2 if pattern_kw else 1
                                     })
                             except json.JSONDecodeError:
                                 continue
-                                
+
+                    break  # Success for this pattern
+
                 except Exception as e:
-                    logger.warning(f"CommonCrawl fallback query failed: {e}")
-        
-        logger.info(f"CommonCrawl found {len(results)} domains for '{keyword}' (region: {region})")
-    
-    except Exception as e:
-        logger.warning(f"CommonCrawl failed for '{keyword}': {str(e)}")
-    
+                    if attempt < retry_count - 1:
+                        wait_time = (attempt + 1) * 3
+                        logger.warning(f"CommonCrawl retry {attempt + 1}/{retry_count} for {pattern}: {e}")
+                        time.sleep(wait_time)
+                    else:
+                        logger.warning(f"CommonCrawl query failed for {pattern} after {retry_count} attempts")
+
+        return tld_results
+
+    # Run TLD queries in parallel using ThreadPoolExecutor pattern
+    with ThreadPoolExecutor(max_workers=max(1, min(4, len(tlds)))) as executor:
+        futures = {executor.submit(query_tld, tld): tld for tld in tlds}
+
+        for future in as_completed(futures):
+            if len(results) >= max_results:
+                break
+            tld_results = future.result()
+            results.extend(tld_results)
+
+    logger.info(f"CommonCrawl found {len(results)} domains for '{keyword}' (region: {region})")
+
     return results[:max_results]

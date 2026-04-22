@@ -14,5 +14,7 @@ if [ -f "$PID_FILE" ]; then
     fi
 fi
 
+export PYTHONPATH=/home/fisazkido/lead_gen2
+
 echo $$ > "$PID_FILE"
 ./venv/bin/python main.py

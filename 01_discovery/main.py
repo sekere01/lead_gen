@@ -55,7 +55,7 @@ def discover_domains_isolated(keyword: str, region: str = "") -> Dict[str, Any]:
 
     # Source 1: DuckDuckGo + SearXNG (search_orchestration)
     try:
-        search_results = search_domains(keyword, num_results=100, region=region)
+        search_results = search_domains(keyword, num_results=0, region=region)
         logger.info(f"Search found {len(search_results)} domains")
         if search_results:
             result['domains'].extend(search_results)
@@ -66,7 +66,7 @@ def discover_domains_isolated(keyword: str, region: str = "") -> Dict[str, Any]:
 
     # Source 2: CommonCrawl (independent try/except)
     try:
-        cc_results = discover_commoncrawl(keyword, region=region, max_results=50)
+        cc_results = discover_commoncrawl(keyword, region=region, max_results=500)
         logger.info(f"CommonCrawl found {len(cc_results)} domains")
         for cc in cc_results:
             cc_domain = cc.get('domain', '')
@@ -174,8 +174,7 @@ def process_job(job, db) -> bool:
                     'discovery_score': score,
                     'lead_source': 'discoverer',
                     'status': 'discovered',
-                    'is_active': True,
-                    'job_id': job.id
+                    'is_active': True
                 })
 
                 # Save batch when full
@@ -299,9 +298,11 @@ def write_metrics(db):
         
         for svc, metric, value in metrics:
             try:
-                httpx.post(f"{api_base}/dashboard/metrics", 
-                          params={'service': svc, 'metric': metric, 'value': value},
-                          timeout=5.0)
+                httpx.post(
+                    f"{api_base}/dashboard/metrics",
+                    json={"service": svc, "metric": metric, "value": value},
+                    timeout=5.0,
+                )
             except Exception as e:
                 logger.debug(f"Failed to write metric {metric}: {e}")
                 

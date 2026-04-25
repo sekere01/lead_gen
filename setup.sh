@@ -7,15 +7,17 @@
 
 set -e
 
-# Detect the actual deploying user (who invoked sudo)
-DEPLOY_USER=${SUDO_USER:-$(whoami)}
-if [ "$DEPLOY_USER" = "root" ] && [ -n "$SUDO_USER" ]; then
-    DEPLOY_USER=$SUDO_USER
-elif [ "$DEPLOY_USER" = "root" ]; then
-    DEPLOY_USER="ubuntu"
-fi
-
 echo "=== Lead Generation Pipeline Setup ==="
+echo ""
+echo "NOTE: Run as: sudo bash setup.sh"
+echo ""
+
+read -p "Deploy username (non-root user who will run services): " DEPLOY_USER
+[ -z "$DEPLOY_USER" ] && echo "ERROR: Deploy user required." && exit 1
+
+# Create user if it doesn't exist
+id "$DEPLOY_USER" &>/dev/null || useradd -m "$DEPLOY_USER"
+
 echo "Deploy user: $DEPLOY_USER"
 echo ""
 
@@ -64,6 +66,13 @@ CREATE DATABASE lead_gen2 OWNER $DEPLOY_USER;
 GRANT ALL PRIVILEGES ON DATABASE lead_gen2 TO $DEPLOY_USER;
 EOF
 
+# Grant schema privileges
+sudo -u postgres psql -d lead_gen2 <<EOF
+GRANT ALL ON SCHEMA public TO $DEPLOY_USER;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO $DEPLOY_USER;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO $DEPLOY_USER;
+EOF
+
 echo "    PostgreSQL configured."
 
 # =============================================================================
@@ -95,6 +104,46 @@ systemctl enable redis-server
 systemctl start redis-server
 
 echo "    Redis configured."
+
+# =============================================================================
+# 4b. SearXNG setup
+# =============================================================================
+echo "[4b/11] Configuring SearXNG..."
+
+mkdir -p /etc/searxng
+
+cat > /etc/searxng/settings.yml <<EOF
+use_default_settings: true
+
+server:
+  secret_key: "$(openssl rand -hex 32)"
+  limiter: false
+
+search:
+  safe_search: 0
+  formats:
+    - html
+    - json
+
+engines:
+  - name: google
+    disabled: false
+  - name: bing
+    disabled: false
+  - name: duckduckgo
+    disabled: false
+EOF
+
+docker pull searxng/searxng:latest
+
+docker run -d \
+    --name searxng \
+    --restart always \
+    -p 8080:8080 \
+    -v /etc/searxng:/etc/searxng \
+    searxng/searxng:latest
+
+echo "    SearXNG running on http://localhost:8080"
 
 # =============================================================================
 # 4. Create project directory
@@ -135,8 +184,11 @@ read -p "GROQ API Key: " GROQ_API_KEY
 read -p "GROQ Model [llama-3.1-8b-instant]: " GROQ_MODEL
 GROQ_MODEL=${GROQ_MODEL:-llama-3.1-8b-instant}
 
-read -p "SearXNG URL: " SEARXNG_URL
-[ -z "$SEARXNG_URL" ] && echo "ERROR: SEARXNG_URL is required." && exit 1
+read -p "GROQ Model [llama-3.1-8b-instant]: " GROQ_MODEL
+GROQ_MODEL=${GROQ_MODEL:-llama-3.1-8b-instant}
+
+read -p "SearXNG URL [http://localhost:8080]: " SEARXNG_URL
+SEARXNG_URL=${SEARXNG_URL:-http://localhost:8080}
 
 echo "    Configuration collected."
 
@@ -197,8 +249,8 @@ echo "    .env files written."
 # =============================================================================
 echo "[8/11] Installing Playwright..."
 
-sudo -u $DEPLOY_USER "$PROJECT_DIR/01b_browsing/venv/bin/pip" install playwright --quiet
-sudo -u $DEPLOY_USER "$PROJECT_DIR/01b_browsing/venv/bin/python" -m playwright install chromium --quiet
+sudo -u $DEPLOY_USER "$PROJECT_DIR/01b_browsing/venv/bin/pip" install playwright
+sudo -u $DEPLOY_USER "$PROJECT_DIR/01b_browsing/venv/bin/python" -m playwright install chromium
 apt install -y libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2 >/dev/null 2>&1 || true
 
 echo "    Playwright installed."
@@ -223,6 +275,7 @@ Type=simple
 User=$DEPLOY_USER
 WorkingDirectory=$PROJECT_DIR/01_discovery
 Environment="PATH=$PROJECT_DIR/01_discovery/venv/bin"
+Environment="PYTHONPATH=$PROJECT_DIR"
 Environment="LOG_DIR=$LOG_DIR"
 ExecStart=$PROJECT_DIR/01_discovery/venv/bin/python main.py
 Restart=always
@@ -243,6 +296,7 @@ Type=simple
 User=$DEPLOY_USER
 WorkingDirectory=$PROJECT_DIR/01b_browsing
 Environment="PATH=$PROJECT_DIR/01b_browsing/venv/bin"
+Environment="PYTHONPATH=$PROJECT_DIR"
 Environment="LOG_DIR=$LOG_DIR"
 ExecStart=$PROJECT_DIR/01b_browsing/venv/bin/python main.py
 Restart=always
@@ -263,6 +317,7 @@ Type=simple
 User=$DEPLOY_USER
 WorkingDirectory=$PROJECT_DIR/02_enrichment
 Environment="PATH=$PROJECT_DIR/02_enrichment/venv/bin"
+Environment="PYTHONPATH=$PROJECT_DIR"
 Environment="LOG_DIR=$LOG_DIR"
 ExecStart=$PROJECT_DIR/02_enrichment/venv/bin/python main.py
 Restart=always
@@ -283,6 +338,7 @@ Type=simple
 User=$DEPLOY_USER
 WorkingDirectory=$PROJECT_DIR/03_verification
 Environment="PATH=$PROJECT_DIR/03_verification/venv/bin"
+Environment="PYTHONPATH=$PROJECT_DIR"
 Environment="LOG_DIR=$LOG_DIR"
 ExecStart=$PROJECT_DIR/03_verification/venv/bin/python main.py
 Restart=always
@@ -303,6 +359,7 @@ Type=simple
 User=$DEPLOY_USER
 WorkingDirectory=$PROJECT_DIR/04_api
 Environment="PATH=$PROJECT_DIR/04_api/venv/bin"
+Environment="PYTHONPATH=$PROJECT_DIR"
 Environment="LOG_DIR=$LOG_DIR"
 ExecStart=$PROJECT_DIR/04_api/venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port 8000
 Restart=always
@@ -328,6 +385,9 @@ server {
 
     location / {
         proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
@@ -346,6 +406,14 @@ systemctl enable nginx
 systemctl restart nginx
 
 echo "    nginx configured."
+
+# =============================================================================
+# 10b. Sudoers entry for deploy user
+# =============================================================================
+echo "$DEPLOY_USER ALL=(ALL) NOPASSWD: /bin/systemctl start leadgen-*, /bin/systemctl stop leadgen-*, /bin/systemctl restart leadgen-*" > /etc/sudoers.d/leadgen
+chmod 440 /etc/sudoers.d/leadgen
+
+echo "    Sudoers entry added."
 
 # =============================================================================
 # 11. Complete
@@ -368,7 +436,7 @@ echo ""
 echo "========================================"
 echo "DETAILS:"
 echo "========================================"
-echo "Database: postgresql://$DEPLOY_USER:***@localhost:5432/lead_gen2"
+echo "Database: postgresql://$DEPLOY_USER:***@localhost:5432/leadgen2"
 echo "GROQ Model: $GROQ_MODEL"
 echo "SearXNG: $SEARXNG_URL"
 echo "========================================"

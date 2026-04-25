@@ -39,7 +39,7 @@ fi
 echo "[1/5] Updating code..."
 
 cd "$PROJECT_DIR"
-git pull origin main 2>/dev/null || git pull 2>/dev/null || echo "    Git pull skipped (no remote or on main branch)"
+git pull origin test 2>/dev/null || git pull 2>/dev/null || echo "    Git pull skipped (not on test branch)"
 
 echo "    Code updated."
 

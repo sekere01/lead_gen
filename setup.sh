@@ -120,8 +120,8 @@ if [ -z "$REPO_URL" ]; then
 fi
 
 cd "$PROJECT_DIR"
-sudo -u $DEPLOY_USER git clone "$REPO_URL" .
-echo "    Repository cloned."
+sudo -u $DEPLOY_USER git clone -b test "$REPO_URL" .
+echo "    Repository cloned (test branch)."
 
 # =============================================================================
 # 5b. Interactive configuration (required)

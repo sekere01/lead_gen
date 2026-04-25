@@ -17,7 +17,7 @@ from config import settings
 from services.email_verify import verify_email_fast
 from services.verification import verify_email
 
-LOG_DIR = os.getenv("LOG_DIR", "/home/fisazkido/lead_gen2/logs")
+LOG_DIR = os.getenv("LOG_DIR", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logs"))
 os.makedirs(LOG_DIR, exist_ok=True)
 
 formatter = logging.Formatter('%(asctime)s | %(levelname)s | verifier | %(message)s')

@@ -17,7 +17,7 @@ from shared_models import Base
 from services.browser import browse_homepage, extract_emails_from_html
 from services.signal_extractor import extract_signals, apply_score, get_tier
 
-LOG_DIR = os.getenv("LOG_DIR", "/home/fisazkido/lead_gen2/logs")
+LOG_DIR = os.getenv("LOG_DIR", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logs"))
 os.makedirs(LOG_DIR, exist_ok=True)
 
 formatter = logging.Formatter('%(asctime)s | %(levelname)s | browser | %(message)s')
@@ -133,10 +133,11 @@ def process_company(company_id: int) -> bool:
                     company.retry_count = 0
                     company.failure_reason = f'Phase 1 exhausted, moving to phase 2'
                     logger.warning(f"Company {domain} moved to phase 2 (requeued)")
-                elif company.status in ('discovered', 'browsing'):
-                    company.status = 'discovered'
+                else:
+                    company.status = 'browsed'
+                    company.discovery_score = 1
                     company.failure_reason = f'No content fetched (attempt {company.retry_count}/{MAX_RETRIES})'
-                    logger.warning(f"Company {domain}: no content, retry {company.retry_count}")
+                    logger.warning(f"Company {domain}: no content marked browsed with score 1")
                 db.commit()
                 return False
             
@@ -231,9 +232,10 @@ def watchdog_reset_stuck_companies(db) -> int:
             company.failure_reason = f'Watchdog: stuck >{WATCHDOG_MINUTES}min, phase 1 exhausted'
             logger.warning(f"Company {company.domain} moved to phase 2 (requeued)")
         else:
-            company.status = 'discovered'
-            company.failure_reason = f'Watchdog: stuck >{WATCHDOG_MINUTES}min, retry {company.retry_count}'
-            logger.warning(f"Company {company.domain} reset to discovered (retry {company.retry_count})")
+            company.status = 'browsed'
+            company.discovery_score = 1
+            company.failure_reason = f'Watchdog: stuck >{WATCHDOG_MINUTES}min, marked browsed'
+            logger.warning(f"Company {company.domain} marked browsed (score 1) due to stuck state")
         
         company.browse_heartbeat = None
         

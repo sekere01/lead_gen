@@ -21,7 +21,7 @@ from services.search_orchestration import search_domains
 from services.commoncrawl import discover_commoncrawl
 from services.regional_scoring import get_global_region_score, maybe_reload_config, get_config_summary
 
-LOG_DIR = os.getenv("LOG_DIR", "/home/fisazkido/lead_gen2/logs")
+LOG_DIR = os.getenv("LOG_DIR", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logs"))
 os.makedirs(LOG_DIR, exist_ok=True)
 
 formatter = logging.Formatter('%(asctime)s | %(levelname)s | discoverer | %(message)s')

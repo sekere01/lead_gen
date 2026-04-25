@@ -92,9 +92,10 @@ def get_logs(limit: int = 100):
         except Exception:
             pass
     
-    # Also check old pipeline.log
-    try:
-        with open("/home/fisazkido/lead_gen2/pipeline.log", "r") as f:
+    # Try legacy log path from env, if exists
+    legacy_log = os.getenv("LEGACY_LOG_PATH", "")
+    if legacy_log and os.path.exists(legacy_log):
+        with open(legacy_log, "r") as f:
             for line in f.readlines()[-limit:]:
                 all_logs.append(f"[legacy] {line.strip()}")
     except Exception:

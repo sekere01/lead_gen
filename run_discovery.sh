@@ -1,6 +1,7 @@
 #!/bin/bash
 
-cd "$(dirname "$0")/01_discovery"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
 PID_FILE="/tmp/leadgen_discovery.pid"
 
@@ -21,8 +22,9 @@ fi
 pkill -f "python.*01_discovery" 2>/dev/null
 sleep 1
 
-export PYTHONPATH=/home/fisazkido/lead_gen2
+export PYTHONPATH="$PROJECT_ROOT"
 
+cd "$SCRIPT_DIR"
 ./venv/bin/python main.py &
 echo $! > "$PID_FILE"
 wait

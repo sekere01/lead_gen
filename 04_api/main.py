@@ -28,7 +28,7 @@ app = FastAPI(
 
 BASE_DIR = Path(__file__).parent
 
-LOG_DIR = os.getenv("LOG_DIR", "/home/fisazkido/lead_gen2/logs")
+LOG_DIR = os.getenv("LOG_DIR", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logs"))
 os.makedirs(LOG_DIR, exist_ok=True)
 
 file_handler = logging.handlers.TimedRotatingFileHandler(

@@ -1,4 +1,4 @@
-# Browsing dependencies
+# Browsing Service dependencies
 httpx>=0.25.0
 playwright>=1.40.0
 beautifulsoup4>=4.12.0

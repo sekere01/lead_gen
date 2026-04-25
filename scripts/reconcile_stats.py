@@ -1,9 +1,9 @@
-#!/home/fisazkido/lead_gen2/04_api/venv/bin/python
+#!/usr/bin/env python3
 """
 job_stats reconciliation script.
 Recalculates all job_stats counts from source tables and upserts them.
 Run via: python scripts/reconcile_stats.py
-Or via cron: 0 3 * * * cd /home/fisazkido/lead_gen2 && python scripts/reconcile_stats.py
+Or via cron: 0 3 * * * cd /path/to/lead_gen2 && python scripts/reconcile_stats.py
 """
 import sys
 import os

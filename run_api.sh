@@ -1,10 +1,10 @@
 #!/bin/bash
 # Run API Service using its venv
 
-cd "$(dirname "$0")/04_api"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
-# Add project root to PYTHONPATH so shared_models can be resolved
-export PYTHONPATH="/home/fisazkido/lead_gen2:$PYTHONPATH"
+export PYTHONPATH="$PROJECT_ROOT:$PYTHONPATH"
 
 PID_FILE="/tmp/leadgen_api.pid"
 
@@ -21,5 +21,6 @@ fi
 # Save our PID
 echo $$ > "$PID_FILE"
 
-# Run API
+# Run API from the script directory
+cd "$SCRIPT_DIR"
 ./venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8000

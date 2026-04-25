@@ -9,6 +9,8 @@ import os
 # Add project root to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import logging
+import logging.handlers
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
@@ -25,6 +27,24 @@ app = FastAPI(
 )
 
 BASE_DIR = Path(__file__).parent
+
+LOG_DIR = os.getenv("LOG_DIR", "/home/fisazkido/lead_gen2/logs")
+os.makedirs(LOG_DIR, exist_ok=True)
+
+file_handler = logging.handlers.TimedRotatingFileHandler(
+    filename=os.path.join(LOG_DIR, "api.log"),
+    when="midnight",
+    interval=1,
+    backupCount=7,
+    encoding="utf-8"
+)
+file_handler.setLevel(logging.WARNING)
+file_handler.setFormatter(logging.Formatter(
+    '%(asctime)s | %(levelname)s | api | %(message)s'
+))
+
+logging.getLogger("uvicorn.error").addHandler(file_handler)
+logging.getLogger("uvicorn.access").addHandler(file_handler)
 
 app.add_middleware(
     CORSMiddleware,

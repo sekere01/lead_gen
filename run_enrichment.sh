@@ -1,9 +1,7 @@
 #!/bin/bash
-# Run Enrichment Service using its venv
 
 cd "$(dirname "$0")/02_enrichment"
 
-# Add project root to PYTHONPATH so shared_models can be resolved
 export PYTHONPATH="/home/fisazkido/lead_gen2:$PYTHONPATH"
 
 PID_FILE="/tmp/leadgen_enrichment.pid"
@@ -11,11 +9,20 @@ PID_FILE="/tmp/leadgen_enrichment.pid"
 if [ -f "$PID_FILE" ]; then
     OLD_PID=$(cat "$PID_FILE")
     if kill -0 "$OLD_PID" 2>/dev/null; then
-        echo "Killing existing enrichment (PID: $OLD_PID)"
-        kill -9 "$OLD_PID" 2>/dev/null
-        sleep 1
+        echo "Stopping existing enrichment (PID: $OLD_PID)..."
+        kill -15 "$OLD_PID" 2>/dev/null
+        sleep 3
+        if kill -0 "$OLD_PID" 2>/dev/null; then
+            echo "Force killing (PID: $OLD_PID)..."
+            kill -9 "$OLD_PID" 2>/dev/null
+        fi
     fi
+    rm -f "$PID_FILE"
 fi
 
-echo $$ > "$PID_FILE"
-./venv/bin/python main.py
+pkill -f "python.*02_enrichment" 2>/dev/null
+sleep 1
+
+./venv/bin/python main.py &
+echo $! > "$PID_FILE"
+wait

@@ -5,6 +5,7 @@ Entry: python main.py
 """
 import time
 import logging
+import logging.handlers
 import traceback
 import os
 from datetime import datetime, timedelta, timezone
@@ -20,11 +21,29 @@ from services.search_orchestration import search_domains
 from services.commoncrawl import discover_commoncrawl
 from services.regional_scoring import get_global_region_score, maybe_reload_config, get_config_summary
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s | %(levelname)s | discoverer | %(message)s'
+LOG_DIR = os.getenv("LOG_DIR", "/home/fisazkido/lead_gen2/logs")
+os.makedirs(LOG_DIR, exist_ok=True)
+
+formatter = logging.Formatter('%(asctime)s | %(levelname)s | discoverer | %(message)s')
+
+stream_handler = logging.StreamHandler()
+stream_handler.setLevel(logging.INFO)
+stream_handler.setFormatter(formatter)
+
+file_handler = logging.handlers.TimedRotatingFileHandler(
+    filename=os.path.join(LOG_DIR, "discovery.log"),
+    when="midnight",
+    interval=1,
+    backupCount=7,
+    encoding="utf-8"
 )
+file_handler.setLevel(logging.WARNING)
+file_handler.setFormatter(formatter)
+
 logger = logging.getLogger("discoverer")
+logger.setLevel(logging.DEBUG)
+logger.addHandler(stream_handler)
+logger.addHandler(file_handler)
 
 POLL_INTERVAL = settings.DISCOVERY_POLL_INTERVAL
 MAX_JOB_RETRIES = settings.MAX_JOB_RETRIES

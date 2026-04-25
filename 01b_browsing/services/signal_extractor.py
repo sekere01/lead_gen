@@ -2,12 +2,9 @@
 import re
 import logging
 from typing import Dict, List, Any
-from urllib.parse import urlparse
 
 from utils.email_utils import (
     clean_emails,
-    is_valid_tld,
-    repair_concatenated_tld,
     FILE_EXTENSION_BLOCKLIST,
     PLACEHOLDER_DOMAINS,
     STRICT_EMAIL_REGEX,
@@ -42,7 +39,7 @@ ADDRESS_PATTERNS = [
 ]
 
 
-def extract_signals(html: str, url: str, region: str = "") -> Dict[str, Any]:
+def extract_signals(html: str, url: str) -> Dict[str, bool]:
     """Extract signals from HTML content."""
     signals = {
         'has_contact_link': False,
@@ -86,26 +83,6 @@ def extract_signals(html: str, url: str, region: str = "") -> Dict[str, Any]:
     
     if clean_email_list:
         signals['has_email_on_homepage'] = True
-    
-    # Check language match (simple check)
-    if region:
-        region_langs = {
-            'china': ['zh', 'cn'],
-            'germany': ['de'],
-            'france': ['fr'],
-            'japan': ['ja'],
-            'korea': ['ko'],
-            'brazil': ['pt'],
-            'russia': ['ru'],
-            'spain': ['es'],
-            'italy': ['it'],
-            'india': ['hi'],
-        }
-        lang_codes = region_langs.get(region.lower(), [])
-        for lang in lang_codes:
-            if f'lang="{lang}' in html_lower or f"lang='{lang}" in html_lower:
-                signals['language_match'] = True
-                break
     
     return signals
 

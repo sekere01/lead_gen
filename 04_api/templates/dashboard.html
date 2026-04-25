@@ -498,8 +498,8 @@
                     <select id="companies-filter" onchange="filterCompanies()">
                         <option value="">All Statuses</option>
                         <option value="discovered">Discovered</option>
+                        <option value="browsed">Browsed</option>
                         <option value="enriched">Enriched</option>
-                        <option value="browsing">Browsing</option>
                         <option value="verified">Verified</option>
                         <option value="failed">Failed</option>
                     </select>
@@ -526,15 +526,18 @@
                 <h2>Contacts</h2>
                 <button onclick="closeModal('contacts-modal')">&times;</button>
             </div>
-            <div class="modal-body" style="padding: 12px; overflow: hidden;">
+            <div class="modal-body" style="padding: 12px;">
                 <div class="form-group" style="display: flex; gap: 8px; margin-bottom: 8px;">
                     <input type="text" id="contacts-search" placeholder="Search by email..." oninput="filterContacts()" style="flex: 1;">
                     <select id="contacts-filter" onchange="filterContacts()" style="width: 150px;">
                         <option value="">All Statuses</option>
+                        <option value="pending">Pending</option>
                         <option value="valid_verified">Valid Verified</option>
                         <option value="no_mx_records">No MX</option>
-                        <option value="invalid_syntax">Invalid</option>
-                        <option value="unknown">Unknown</option>
+                        <option value="invalid_syntax">Invalid Syntax</option>
+                        <option value="disposable_domain">Disposable</option>
+                        <option value="needs_retry">Needs Retry</option>
+                        <option value="failed">Failed</option>
                     </select>
                 </div>
                 <div style="max-height: 60vh; overflow-y: auto;" class="styled-scroll">
@@ -980,11 +983,11 @@ function animateCounter(element, target, duration = 1000) {
                 const ctx = canvas.getContext('2d');
                 const labels = data.data.map(d => formatTimestamp(d.timestamp, currentWindow));
                 
-                // Get all unique metric keys (exclude timestamp)
+                // Get all unique metric keys (exclude timestamp and label)
                 const allMetricKeys = new Set();
                 data.data.forEach(d => {
                     Object.keys(d).forEach(k => {
-                        if (k !== 'timestamp') allMetricKeys.add(k);
+                        if (k !== 'timestamp' && k !== 'label') allMetricKeys.add(k);
                     });
                 });
                 
@@ -996,20 +999,22 @@ function animateCounter(element, target, duration = 1000) {
                     'verification': 'verified_count'
                 };
                 
-                // Color mapping per metric
+                // Color mapping per metric - bold, distinct colors
                 const metricColors = {
-                    'companies_found': '#3b82f6',
-                    'jobs_active': '#60a5fa',
-                    'jobs_pending': '#93c5fd',
-                    'pages_browsed': '#818cf8',
-                    'score_strong': '#a78bfa',
-                    'score_good': '#c4b5fd',
-                    'score_weak': '#ddd6fe',
-                    'emails_collected': '#10b981',
-                    'companies_enriched': '#34d399',
-                    'verified_count': '#f59e0b',
-                    'failed_count': '#fbbf24',
-                    'queue_size': '#64748b'
+                    'companies_total': '#1e40af',
+                    'jobs_pending': '#dc2626',
+                    'jobs_completed': '#16a34a',
+                    'jobs_failed': '#dc2626',
+                    'pages_browsed': '#7c3aed',
+                    'domain_browsed': '#ea580c',
+                    'domain_failed': '#991b1b',
+                    'emails_collected': '#14b8a6',
+                    'domains_processed': '#0d9488',
+                    'enrich_requeued': '#d97706',
+                    'verified_count': '#facc15',
+                    'invalid_count': '#ef4444',
+                    'pending_count': '#f97316',
+                    'contacts_total': '#0284c7'
                 };
                 
                 // Service colors (for "all" view)
@@ -1033,30 +1038,36 @@ function animateCounter(element, target, duration = 1000) {
                             const svcData = d[fullMetricKey] || d[primaryMetric] || 0;
                             return svcData;
                         });
+                        const color = serviceColors[svc] || '#3b82f6';
                         datasets.push({
                             label: svc,
                             data: values,
-                            borderColor: serviceColors[svc],
-                            backgroundColor: serviceColors[svc] + '20',
+                            borderColor: color,
+                            backgroundColor: color + '40',
+                            borderWidth: 3,
                             fill: false,
-                            tension: 0.4,
-                            pointRadius: 2,
-                            pointHoverRadius: 5
+                            tension: 0.3,
+                            pointRadius: 3,
+                            pointHoverRadius: 6,
+                            pointBackgroundColor: color
                         });
-                    });
+                        });
                 } else {
                     // Single service view - one line per metric
                     Array.from(allMetricKeys).forEach(metric => {
                         const values = data.data.map(d => d[metric] || 0);
+                        const color = metricColors[metric] || '#3b82f6';
                         datasets.push({
                             label: metric,
                             data: values,
-                            borderColor: metricColors[metric] || '#3b82f6',
-                            backgroundColor: (metricColors[metric] || '#3b82f6') + '20',
+                            borderColor: color,
+                            backgroundColor: color + '40',
+                            borderWidth: 3,
                             fill: false,
-                            tension: 0.4,
-                            pointRadius: 2,
-                            pointHoverRadius: 5
+                            tension: 0.3,
+                            pointRadius: 3,
+                            pointHoverRadius: 6,
+                            pointBackgroundColor: color
                         });
                     });
                 }

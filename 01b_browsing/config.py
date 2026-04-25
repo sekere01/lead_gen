@@ -11,13 +11,16 @@ load_dotenv(env_path)
 
 class Settings:
     DATABASE_URL: str = os.getenv("DATABASE_URL")  # REQUIRED - no default
+    DB_POOL_SIZE: int = int(os.getenv("DB_POOL_SIZE", "10"))
+    DB_MAX_OVERFLOW: int = int(os.getenv("DB_MAX_OVERFLOW", "5"))
+    DB_POOL_TIMEOUT: int = int(os.getenv("DB_POOL_TIMEOUT", "10"))
     
     # Polling
     BROWSING_POLL_INTERVAL: int = int(os.getenv("BROWSING_POLL_INTERVAL", "10"))
     
     # Timeouts
     BROWSING_TIMEOUT_HTTP: int = int(os.getenv("BROWSING_TIMEOUT_HTTP", "10"))
-    BROWSING_TIMEOUT_PLAYWRIGHT: int = int(os.getenv("BROWSING_TIMEOUT_PLAYWRIGHT", "30"))
+    BROWSING_TIMEOUT_PLAYWRIGHT: int = int(os.getenv("BROWSING_TIMEOUT_PLAYWRIGHT", "15"))
     BROWSING_TIMEOUT_DOMAIN: int = int(os.getenv("BROWSING_TIMEOUT_DOMAIN", "45"))
     
     # Concurrency
@@ -27,6 +30,7 @@ class Settings:
     # Retry/Watchdog
     BROWSING_WATCHDOG_MINUTES: int = int(os.getenv("BROWSING_WATCHDOG_MINUTES", "15"))
     BROWSING_MAX_RETRIES: int = int(os.getenv("BROWSING_MAX_RETRIES", "3"))
+    BROWSING_MAX_RETRIES_PHASE2: int = int(os.getenv("BROWSING_MAX_RETRIES_PHASE2", "2"))
     
     # Scoring
     SCORE_MAX: int = int(os.getenv("SCORE_MAX", "10"))

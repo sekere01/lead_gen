@@ -9,6 +9,7 @@ import os
 import time
 import asyncio
 import logging
+import logging.handlers
 import json
 from datetime import datetime, timedelta
 from typing import List, Tuple, Dict, Any, Set
@@ -21,14 +22,33 @@ import httpx
 from database import SessionLocal, init_db, Company, Contact, ExtractedEmail
 from config import settings
 from services.email_extractor import extract_emails_regex
+from utils.email_utils import is_noise_email, is_placeholder_email, clean_email_prefixes
 
 os.makedirs(settings.OUTPUT_DIR, exist_ok=True)
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s | %(levelname)s | enricher | %(message)s'
+LOG_DIR = os.getenv("LOG_DIR", "/home/fisazkido/lead_gen2/logs")
+os.makedirs(LOG_DIR, exist_ok=True)
+
+formatter = logging.Formatter('%(asctime)s | %(levelname)s | enricher | %(message)s')
+
+stream_handler = logging.StreamHandler()
+stream_handler.setLevel(logging.INFO)
+stream_handler.setFormatter(formatter)
+
+file_handler = logging.handlers.TimedRotatingFileHandler(
+    filename=os.path.join(LOG_DIR, "enrichment.log"),
+    when="midnight",
+    interval=1,
+    backupCount=7,
+    encoding="utf-8"
 )
+file_handler.setLevel(logging.WARNING)
+file_handler.setFormatter(formatter)
+
 logger = logging.getLogger("enricher")
+logger.setLevel(logging.DEBUG)
+logger.addHandler(stream_handler)
+logger.addHandler(file_handler)
 
 POLL_INTERVAL = settings.ENRICHER_POLL_INTERVAL
 MAX_CONCURRENT = settings.MAX_CONCURRENT_CONTAINERS
@@ -38,10 +58,16 @@ HEARTBEAT_INTERVAL = settings.HEARTBEAT_INTERVAL
 DOMAIN_TIMEOUT = settings.ENRICHMENT_TIMEOUT_DOMAIN
 DOCKER_TIMEOUT = settings.ENRICHMENT_TIMEOUT_DOCKER
 MAX_RETRIES = settings.ENRICHMENT_MAX_RETRIES
+MAX_RETRIES_PHASE2 = settings.ENRICHMENT_MAX_RETRIES_PHASE2
 WATCHDOG_MINUTES = settings.ENRICHMENT_WATCHDOG_MINUTES
 
 CRAWLER_MAX_HOSTS = 5
 CRAWLER_HTTP_TIMEOUT = settings.CRAWLER_HTTP_TIMEOUT
+
+
+def get_retry_limit(status):
+    """Return max retries allowed for given status."""
+    return MAX_RETRIES_PHASE2 if status == 'enrich_requeued' else MAX_RETRIES
 
 EXPLICIT_PAGES = [
     'contact', 'contact-us', 'contact.html', 'contact.php', 'contact.htm',
@@ -212,8 +238,21 @@ def extract_emails_from_pages(domain: str, hosts: List[str], target: int) -> Lis
         if text and len(all_emails) < target:
             extracted = extract_emails_regex(text)
             for email in extracted:
-                if email.lower() not in [e.lower() for e in all_emails]:
-                    all_emails.append(email.lower())
+                email = email.strip().lower()
+                email = clean_email_prefixes(email)
+                if not email or '@' not in email:
+                    continue
+                # N1: Reject noise (image filenames, malformed domains)
+                if is_noise_email(email):
+                    logger.debug(f"Noise email rejected: {email}")
+                    continue
+                # N1: Reject placeholders
+                if is_placeholder_email(email):
+                    logger.debug(f"Placeholder email rejected: {email}")
+                    continue
+                # Existing dedup logic
+                if email not in [e.lower() for e in all_emails]:
+                    all_emails.append(email)
                 if len(all_emails) >= target:
                     break
         if len(all_emails) >= target:
@@ -246,8 +285,18 @@ def extract_emails_from_homepage(domain: str, target: int) -> List[str]:
             if response.status_code == 200:
                 extracted = extract_emails_regex(response.text)
                 for email in extracted:
-                    if email.lower() not in [e.lower() for e in all_emails]:
-                        all_emails.append(email.lower())
+                    email = email.strip().lower()
+                    email = clean_email_prefixes(email)
+                    if not email or '@' not in email:
+                        continue
+                    # N1: Reject noise
+                    if is_noise_email(email):
+                        continue
+                    # N1: Reject placeholders
+                    if is_placeholder_email(email):
+                        continue
+                    if email not in [e.lower() for e in all_emails]:
+                        all_emails.append(email)
         except Exception:
             continue
     
@@ -277,7 +326,8 @@ def save_emails_incremental(company_id: int, emails: List[str], email_type: str,
         emails_to_insert.append({
             'email': email_addr,
             'email_type': email_type,
-            'source_url': f"https://{domain}"
+            'source_url': f"https://{domain}",
+            'company_id': company_id
         })
         saved_count += 1
     
@@ -291,34 +341,51 @@ def save_emails_incremental(company_id: int, emails: List[str], email_type: str,
         logger.info(f"Incremental save: {saved_count} emails saved ({email_type})")
     except Exception as e:
         logger.warning(f"Bulk save failed, trying one by one: {e}")
+        db.rollback()  # E1: Clear poisoned transaction
         for i, contact_data in enumerate(contacts_to_insert):
             try:
                 contact = Contact(**contact_data)
                 db.add(contact)
                 email_record = ExtractedEmail(**emails_to_insert[i])
                 db.add(email_record)
+                db.commit()  # E1: Commit each individually
             except Exception:
-                continue
-        db.commit()
+                db.rollback()  # E1: Skip duplicate, continue with next
+                logger.debug(f"Skipped duplicate: {contact_data.get('email')}")
     
     return saved_count
 
 
-def process_company(company, db) -> bool:
+def process_company(company) -> bool:
     """Process a single company with source priority and early stop."""
-    domain = company.domain
-    company.status = 'enriching'
-    company.last_heartbeat = datetime.now()
-    db.commit()
-    
-    saved_count = 0
-    all_emails: Set[str] = set()
-    last_heartbeat_time = time.time()
-    failure_reasons = []
-    
-    start_time = time.time()
-    
+    db = SessionLocal()
     try:
+        domain = company.domain
+        company_id = company.id
+        
+        # Use merge to handle potentially detached object
+        company = db.merge(company)
+        if company is None:
+            logger.warning(f"Company {domain} not found in DB")
+            return False
+            
+        company.status = 'enriching'
+        company.last_heartbeat = datetime.now()
+        db.commit()
+        
+        # Refresh to get database-backed object
+        db.refresh(company)
+        if company.status != 'enriching':
+            logger.debug(f"Company {domain} already being processed, skipping")
+            return False
+        
+        saved_count = 0
+        all_emails: Set[str] = set()
+        last_heartbeat_time = time.time()
+        failure_reasons = []
+        
+        start_time = time.time()
+        
         logger.info(f"Processing company: {domain}")
         
         # Source 1: theHarvester Docker
@@ -409,26 +476,47 @@ def process_company(company, db) -> bool:
             logger.warning(f"Domain {domain} exceeded {DOMAIN_TIMEOUT}s timeout")
             failure_reasons.append(f"timeout after {int(time.time() - start_time)}s")
         
-        # All sources exhausted - mark enriched
-        company.status = 'enriched'
-        company.last_heartbeat = None
-        company.failure_reason = "; ".join(failure_reasons) if failure_reasons else None
-        db.commit()
+        # All sources exhausted - mark enriched (re-fetch to ensure object is attached)
+        try:
+            company = db.query(Company).filter(Company.id == company_id).first()
+            if company:
+                company.status = 'enriched'
+                company.last_heartbeat = None
+                company.failure_reason = "; ".join(failure_reasons) if failure_reasons else None
+                db.commit()
+        except Exception as commit_err:
+            logger.warning(f"Failed to commit status for {domain}: {commit_err}")
         
         logger.info(f"Company {domain} enriched: {saved_count} contacts saved, {len(all_emails)} total emails")
         return True
         
     except TimeoutError:
-        company.status = 'enriched'
-        company.last_heartbeat = None
-        company.failure_reason = "; ".join(failure_reasons) if failure_reasons else "target reached"
-        db.commit()
+        try:
+            company = db.query(Company).filter(Company.id == company_id).first()
+            if company:
+                company.status = 'enriched'
+                company.last_heartbeat = None
+                company.failure_reason = "; ".join(failure_reasons) if failure_reasons else "target reached"
+                db.commit()
+        except Exception as commit_err:
+            logger.warning(f"Failed to commit status for {domain}: {commit_err}")
         logger.info(f"Company {domain} enriched (target reached): {len(all_emails)} emails")
         return True
-        
+    
     except Exception as e:
         logger.error(f"Error processing company {domain}: {e}")
+        try:
+            company = db.query(Company).filter(Company.id == company_id).first()
+            if company:
+                company.status = 'enriched'
+                company.failure_reason = f"Error: {str(e)[:100]}"
+                company.last_heartbeat = None
+                db.commit()
+        except Exception as commit_err:
+            logger.warning(f"Failed to commit error status for {domain}: {commit_err}")
         return False
+    finally:
+        db.close()
 
 
 def watchdog_reset_stuck_companies(db) -> int:
@@ -445,14 +533,20 @@ def watchdog_reset_stuck_companies(db) -> int:
         old_retry = company.retry_count or 0
         company.retry_count = old_retry + 1
         
-        if company.retry_count >= MAX_RETRIES:
+        # Two-phase retry: browsed → enrich_requeued → failed
+        if company.status == 'enrich_requeued' and company.retry_count >= MAX_RETRIES_PHASE2:
             company.status = 'failed'
-            company.failure_reason = f"Watchdog: stuck >{WATCHDOG_MINUTES}min, max retries ({MAX_RETRIES}) exceeded"
-            logger.error(f"Company {company.domain} permanently failed: watchdog timeout after {company.retry_count} retries")
+            company.failure_reason = f"Watchdog: stuck >{WATCHDOG_MINUTES}min, phase 2 exhausted"
+            logger.error(f"Company {company.domain} permanently failed: phase 2 exhausted")
+        elif company.status == 'browsed' and company.retry_count >= MAX_RETRIES:
+            company.status = 'enrich_requeued'
+            company.retry_count = 0
+            company.failure_reason = f"Watchdog: stuck >{WATCHDOG_MINUTES}min, phase 1 exhausted"
+            logger.warning(f"Company {company.domain} moved to phase 2 (enrich_requeued)")
         else:
-            company.status = 'discovered'
-            company.failure_reason = f"Watchdog: stuck >{WATCHDOG_MINUTES}min, retry {company.retry_count}/{MAX_RETRIES}"
-            logger.warning(f"Company {company.domain} reset by watchdog: retry {company.retry_count}/{MAX_RETRIES}")
+            company.status = 'browsed'
+            company.failure_reason = f"Watchdog: stuck >{WATCHDOG_MINUTES}min, retry {company.retry_count}"
+            logger.warning(f"Company {company.domain} reset by watchdog: retry {company.retry_count}")
         
         reset_count += 1
     
@@ -489,9 +583,9 @@ def run_enricher():
             
             watchdog_reset_stuck_companies(db)
             
+            # Two-phase: pick up both 'browsed' and 'enrich_requeued' companies
             companies = db.query(Company).filter(
-                Company.status == 'browsed',
-                Company.retry_count < MAX_RETRIES
+                Company.status.in_(['browsed', 'enrich_requeued']),
             ).order_by(Company.discovery_score.desc()).limit(10).all()
             
             if not companies:
@@ -502,7 +596,7 @@ def run_enricher():
             logger.info(f"Found {len(companies)} companies to enrich")
             
             with ThreadPoolExecutor(max_workers=MAX_CONCURRENT) as executor:
-                futures = {executor.submit(process_company, company, db): company for company in companies}
+                futures = {executor.submit(process_company, company): company for company in companies}
                 
                 for future in as_completed(futures):
                     company = futures[future]

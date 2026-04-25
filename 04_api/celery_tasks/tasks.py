@@ -29,7 +29,7 @@ def process_discovery_job(self, job_id: int):
         logger.error("DATABASE_URL not set")
         return {"error": "DATABASE_URL not set"}
 
-    engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_size=1, max_overflow=1)
+    engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_size=3, max_overflow=2, pool_timeout=10)
     SessionLocal = sessionmaker(bind=engine)
     db = SessionLocal()
 
@@ -100,7 +100,7 @@ def process_browsing(self, company_id: int):
     if not DATABASE_URL:
         return {"error": "DATABASE_URL not set"}
 
-    engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_size=1, max_overflow=1)
+    engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_size=3, max_overflow=2, pool_timeout=10)
     SessionLocal = sessionmaker(bind=engine)
     db = SessionLocal()
 
@@ -161,7 +161,7 @@ def process_enrichment(self, company_id: int):
     if not DATABASE_URL:
         return {"error": "DATABASE_URL not set"}
 
-    engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_size=1, max_overflow=1)
+    engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_size=3, max_overflow=2, pool_timeout=10)
     SessionLocal = sessionmaker(bind=engine)
     db = SessionLocal()
 
@@ -232,7 +232,7 @@ def process_verification(self, contact_id: int):
     if not DATABASE_URL:
         return {"error": "DATABASE_URL not set"}
 
-    engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_size=1, max_overflow=1)
+    engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_size=3, max_overflow=2, pool_timeout=10)
     SessionLocal = sessionmaker(bind=engine)
     db = SessionLocal()
 
@@ -283,7 +283,7 @@ def enqueue_discovery_jobs():
     if not DATABASE_URL:
         return {"error": "DATABASE_URL not set"}
 
-    engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_size=1, max_overflow=1)
+    engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_size=3, max_overflow=2, pool_timeout=10)
     SessionLocal = sessionmaker(bind=engine)
     db = SessionLocal()
 
@@ -314,43 +314,68 @@ def collect_metrics(self):
     Periodic task that collects service metrics every 30 seconds.
     Stores current counts in ServiceMetrics table for the dashboard chart.
     """
+    import logging
+    from sqlalchemy import func
     from shared_models import ServiceMetrics, Company, Contact, DiscoveryJob
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
     from datetime import timedelta
-    
+
+    logger = logging.getLogger(__name__)
+
     DATABASE_URL = os.getenv("DATABASE_URL")
     if not DATABASE_URL:
         return {"error": "DATABASE_URL not set"}
-    
-    engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_size=1, max_overflow=1)
+
+    RETENTION_HOURS = int(os.getenv("METRICS_RETENTION_HOURS", "24"))
+
+    engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_size=3, max_overflow=2, pool_timeout=10)
     SessionLocal = sessionmaker(bind=engine)
     db = SessionLocal()
-    
+
     try:
         timestamp = datetime.now(timezone.utc)
-        
-        # Get current counts
-        companies_total = db.query(Company).count()
-        contacts_total = db.query(Contact).count()
-        verified_count = db.query(Contact).filter(Contact.verification_status == 'valid_verified').count()
-        jobs_pending = db.query(DiscoveryJob).filter(DiscoveryJob.status == 'pending').count()
-        jobs_completed = db.query(DiscoveryJob).filter(DiscoveryJob.status == 'completed').count()
-        jobs_failed = db.query(DiscoveryJob).filter(DiscoveryJob.status == 'failed').count()
-        
-        # Browse service metrics
-        pages_browsed = db.query(Company).filter(Company.status == 'browsed').count()
-        contacts_found = db.query(Contact).filter(Contact.source_url.like('%browse%')).count()
-        
-        # Enrichment service metrics
-        emails_collected = db.query(Contact).filter(
-            Contact.first_name.isnot(None),
-            Contact.email.isnot(None)
-        ).count()
-        domains_processed = db.query(Company).filter(Company.status == 'enriched').count()
-        
-        # Metrics to record
-        metrics_data = [
+
+        # Fix 1: Single grouped query for company status counts (was 5 queries)
+        company_counts = dict(
+            db.query(Company.status, func.count(Company.id))
+            .group_by(Company.status)
+            .all()
+        )
+
+        # Single grouped query for contact verification status counts (was 2 queries)
+        contact_counts = dict(
+            db.query(Contact.verification_status, func.count(Contact.id))
+            .group_by(Contact.verification_status)
+            .all()
+        )
+
+        # Single grouped query for job status counts (was 3 queries)
+        job_counts = dict(
+            db.query(DiscoveryJob.status, func.count(DiscoveryJob.id))
+            .group_by(DiscoveryJob.status)
+            .all()
+        )
+
+        # Extract values from grouped counts
+        companies_total = sum(company_counts.values())
+        pages_browsed = company_counts.get('browsed', 0)
+        domains_processed = company_counts.get('enriched', 0)
+        enrich_requeued = company_counts.get('enrich_requeued', 0)
+
+        contacts_total = sum(contact_counts.values())
+        verified_count = contact_counts.get('valid_verified', 0)
+        invalid_count = contact_counts.get('invalid_syntax', 0) + contact_counts.get('no_mx_records', 0)
+        pending_count = contact_counts.get('pending', 0)
+
+        jobs_pending = job_counts.get('pending', 0)
+        jobs_completed = job_counts.get('completed', 0)
+        jobs_failed = job_counts.get('failed', 0)
+
+        # Final metrics list
+        # Note: 'failed' status (domain_failed) is shared across all services - companies
+        # marked failed by any stage will show up here. This represents total pipeline failures.
+        metrics_to_write = [
             # Discovery metrics
             ('discovery', 'companies_total', companies_total),
             ('discovery', 'jobs_pending', jobs_pending),
@@ -358,36 +383,44 @@ def collect_metrics(self):
             ('discovery', 'jobs_failed', jobs_failed),
             # Browsing metrics
             ('browsing', 'pages_browsed', pages_browsed),
-            ('browsing', 'contacts_found', contacts_found),
-            # Enrichment metrics  
-            ('enrichment', 'emails_collected', emails_collected),
+            ('browsing', 'domain_browsed', company_counts.get('browsing', 0)),
+            ('browsing', 'domain_failed', company_counts.get('failed', 0)),
+            # Enrichment metrics
+            ('enrichment', 'emails_collected', contacts_total),
             ('enrichment', 'domains_processed', domains_processed),
+            ('enrichment', 'enrich_requeued', enrich_requeued),
             # Verification metrics
             ('verification', 'contacts_total', contacts_total),
             ('verification', 'verified_count', verified_count),
+            ('verification', 'invalid_count', invalid_count),
+            ('verification', 'pending_count', pending_count),
         ]
-        
-        for service, metric, value in metrics_data:
-            record = ServiceMetrics(
-                service=service,
-                metric=metric,
-                value=value,
-                recorded_at=timestamp
-            )
-            db.add(record)
-        
+
+        # Fix 4: Wrap each write in try/except
+        for service, metric, value in metrics_to_write:
+            try:
+                record = ServiceMetrics(
+                    service=service,
+                    metric=metric,
+                    value=value,
+                    recorded_at=timestamp
+                )
+                db.add(record)
+            except Exception as e:
+                logger.warning(f"Failed to write metric {service}.{metric}: {e}")
+
         db.commit()
-        
-        # Clean up old data (> 24 hours)
-        cutoff = timestamp - timedelta(hours=24)
+
+        # Fix 5: Configurable cleanup window
+        cutoff = timestamp - timedelta(hours=RETENTION_HOURS)
         deleted = db.query(ServiceMetrics).filter(
             ServiceMetrics.recorded_at < cutoff
         ).delete()
         if deleted:
             db.commit()
-        
-        return {"recorded": len(metrics_data), "cleaned_up": deleted}
-    
+
+        return {"recorded": len(metrics_to_write), "cleaned_up": deleted}
+
     except Exception as e:
         logger.error(f"Error collecting metrics: {e}")
         return {"error": str(e)}

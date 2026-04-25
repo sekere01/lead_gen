@@ -6,6 +6,8 @@ Entry: python main.py
 """
 import time
 import logging
+import logging.handlers
+import os
 from datetime import datetime
 
 from database import SessionLocal, init_db, Contact, Company
@@ -15,11 +17,29 @@ from config import settings
 from services.email_verify import verify_email_fast
 from services.verification import verify_email
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s | %(levelname)s | verifier | %(message)s'
+LOG_DIR = os.getenv("LOG_DIR", "/home/fisazkido/lead_gen2/logs")
+os.makedirs(LOG_DIR, exist_ok=True)
+
+formatter = logging.Formatter('%(asctime)s | %(levelname)s | verifier | %(message)s')
+
+stream_handler = logging.StreamHandler()
+stream_handler.setLevel(logging.INFO)
+stream_handler.setFormatter(formatter)
+
+file_handler = logging.handlers.TimedRotatingFileHandler(
+    filename=os.path.join(LOG_DIR, "verification.log"),
+    when="midnight",
+    interval=1,
+    backupCount=7,
+    encoding="utf-8"
 )
+file_handler.setLevel(logging.WARNING)
+file_handler.setFormatter(formatter)
+
 logger = logging.getLogger("verifier")
+logger.setLevel(logging.DEBUG)
+logger.addHandler(stream_handler)
+logger.addHandler(file_handler)
 
 POLL_INTERVAL = settings.VERIFIER_POLL_INTERVAL
 SMTP_TIMEOUT = settings.SMTP_TIMEOUT

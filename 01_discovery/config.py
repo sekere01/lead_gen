@@ -16,6 +16,9 @@ class Settings:
 
     # Database
     DATABASE_URL: str = os.getenv("DATABASE_URL")  # REQUIRED - no default
+    DB_POOL_SIZE: int = int(os.getenv("DB_POOL_SIZE", "4"))
+    DB_MAX_OVERFLOW: int = int(os.getenv("DB_MAX_OVERFLOW", "3"))
+    DB_POOL_TIMEOUT: int = int(os.getenv("DB_POOL_TIMEOUT", "10"))
 
     # Discovery settings
     DISCOVERY_POLL_INTERVAL: int = int(os.getenv("DISCOVERY_POLL_INTERVAL", "300"))

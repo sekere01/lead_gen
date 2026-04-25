@@ -19,10 +19,90 @@ FILE_EXTENSION_BLOCKLIST = {
 }
 
 PLACEHOLDER_DOMAINS = {
-    'company.com', 'example.com', 'test.com', 'domain.com',
-    'email.com', 'yoursite.com', 'localhost', 'sitename.com',
+    'company.com', 'example.com', 'example.org', 'example.net', 'test.com',
+    'domain.com', 'email.com', 'yoursite.com', 'localhost', 'sitename.com',
     'yourcompany.com', 'yourdomain.com', 'sample.com', 'demo.com',
 }
+
+GENERIC_LOCAL_PARTS = {
+    'user', 'name', 'email', 'test', 'template', 'placeholder',
+    'noreply', 'no-reply', 'donotreply', 'contact', 'admin', 'support',
+    'help', 'sales', 'info', 'webmaster', 'hostmaster', 'postmaster',
+}
+
+NOISE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg', 
+                '.ico', '.2x', '.pdf', '.mp4', '.zip'}
+
+EMAIL_PREFIX_NOISE = re.compile(
+    r'^(u003e|u003c|\\u003e|\\u003c|&gt;|&lt;|&amp;|%3e|%3c)+',
+    re.IGNORECASE
+)
+
+
+def clean_email_prefixes(email: str) -> str:
+    """Strip HTML/Unicode entity prefixes from extracted emails."""
+    return EMAIL_PREFIX_NOISE.sub('', email).strip()
+
+
+def is_noise_email(email: str) -> bool:
+    """
+    Check if email is noise (image filenames, tracking pixels, etc).
+    Layer 1: Reject if local part or domain contains file extension patterns.
+    Layer 2: Reject malformed domains (consecutive dots, TLD > 6 chars, digits in TLD).
+    """
+    if '@' not in email:
+        return True
+    
+    local = email.split('@')[0].lower()
+    domain = email.split('@')[1].lower() if '@' in email else ''
+    
+    # Layer 1a: Reject URL-encoded artifacts
+    if '%' in email:
+        return True
+    
+    # Layer 1c: Reject timestamp-prefixed message IDs (e.g. 20260403191942.21410-1-user@domain.com)
+    local_part = email.split('@')[0]
+    if re.match(r'^\d{8,}\.', local_part):
+        return True
+    
+    # Layer 1b: File extension rejection
+    if any(ext in local for ext in NOISE_EXTENSIONS):
+        return True
+    if any(domain.endswith(ext) for ext in NOISE_EXTENSIONS):
+        return True
+    
+    # Layer 2: Malformed domain rejection
+    if '..' in domain:
+        return True
+    if '.' in domain:
+        tld = domain.split('.')[-1]
+        if len(tld) > 6:
+            return True
+        if any(c.isdigit() for c in tld):
+            return True
+    
+    return False
+
+
+def is_placeholder_email(email: str) -> bool:
+    """
+    Check if email is a placeholder.
+    Rejects: exact placeholder domains, OR generic local + placeholder domain.
+    Allows: generic local parts with real domains (e.g., noreply@realcompany.com).
+    """
+    if '@' not in email:
+        return True
+    local_part, domain = email.lower().split('@', 1)
+    
+    # Reject if domain is a placeholder domain
+    if domain in PLACEHOLDER_DOMAINS:
+        return True
+    
+    # Reject if generic local part AND placeholder domain (the AND condition)
+    if local_part in GENERIC_LOCAL_PARTS and domain in PLACEHOLDER_DOMAINS:
+        return True
+    
+    return False
 
 KNOWN_TLDS = {
     'com', 'org', 'net', 'io', 'co', 'info', 'biz', 'edu', 'gov',
@@ -125,8 +205,8 @@ def clean_emails(raw_emails: List[str]) -> List[str]:
             continue
         if any(lower_email.endswith(ext) for ext in FILE_EXTENSION_BLOCKLIST):
             continue
-        domain = lower_email.split('@')[1]
-        if domain in PLACEHOLDER_DOMAINS:
+        # E2: Use comprehensive placeholder check (generic local + placeholder domain)
+        if is_placeholder_email(lower_email):
             continue
         if not STRICT_EMAIL_REGEX.match(lower_email):
             continue

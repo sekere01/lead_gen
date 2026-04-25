@@ -127,8 +127,7 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
     # Queue depths per pipeline stage
     discovery_queue = db.query(DiscoveryJob).filter(DiscoveryJob.status == 'pending').count()
     browsing_queue = db.query(Company).filter(
-        Company.status == 'discovered',
-        Company.discovery_score >= 2
+        Company.status == 'discovered'
     ).count()
     enrichment_queue = db.query(Company).filter(Company.status == 'browsed').count()
     verification_queue = db.query(Contact).filter(Contact.verification_status == 'pending').count()

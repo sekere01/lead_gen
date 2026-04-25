@@ -11,10 +11,10 @@ from shared_models import Company, Contact, JobStats, update_job_stats, Base
 engine = create_engine(
     settings.DATABASE_URL,
     pool_pre_ping=True,
-    pool_size=1,
-    max_overflow=1,
+    pool_size=settings.DB_POOL_SIZE,
+    max_overflow=settings.DB_MAX_OVERFLOW,
     pool_recycle=300,
-    pool_timeout=5
+    pool_timeout=settings.DB_POOL_TIMEOUT
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

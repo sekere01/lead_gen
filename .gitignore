@@ -9,3 +9,6 @@ __pycache__/
 .remember/
 graphify-out/
 .kilo/
+*.log
+logs/
+/var/log/

@@ -140,6 +140,37 @@
         
         .pipeline-map { display: flex; align-items: center; justify-content: center; gap: 0; }
         
+        /* Pipeline Control Toggle */
+        .pipeline-control { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+        .control-label { font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 1px; display: flex; align-items: center; gap: 4px; cursor: help; }
+        .control-label .info-icon { width: 14px; height: 14px; border: 1px solid #64748b; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 9px; color: #64748b; }
+        .control-label .info-icon:hover::after { content: 'Manual: You control when services run. Good for debugging.\A Auto: Services restart automatically if they crash. Good for production.'; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); background: #1e293b; color: #e2e8f0; padding: 8px 12px; border-radius: 6px; font-size: 11px; white-space: pre; width: 200px; text-align: left; z-index: 100; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+        
+        .mode-toggle { position: relative; width: 40px; height: 22px; cursor: pointer; }
+        .mode-toggle input { opacity: 0; width: 0; height: 0; }
+        .toggle-track { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: #2a2d3a; border-radius: 11px; transition: all 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55); }
+        .toggle-track::before { content: ''; position: absolute; height: 14px; width: 14px; left: 4px; bottom: 4px; background: linear-gradient(145deg, #60a5fa, #3b82f6); border-radius: 50%; transition: all 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55); box-shadow: 0 2px 4px rgba(0,0,0,0.3); }
+        .mode-toggle input:checked + .toggle-track { background: #166534; box-shadow: 0 0 12px rgba(16,185,129,0.3); }
+        .mode-toggle input:checked + .toggle-track::before { transform: translateX(18px); background: linear-gradient(145deg, #34d399, #10b981); }
+        .toggle-labels { display: flex; justify-content: space-between; width: 56px; margin-top: 4px; }
+        .toggle-label { font-size: 9px; color: #64748b; opacity: 0; transition: opacity 0.3s; }
+        .mode-toggle:hover .toggle-label { opacity: 1; }
+        .mode-toggle input:checked ~ .toggle-labels .label-auto { opacity: 1; color: #10b981; }
+        .mode-toggle:not(:checked) ~ .toggle-labels .label-manual { opacity: 1; color: #3b82f6; }
+        
+        .mode-badge { font-size: 9px; padding: 2px 6px; border-radius: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+        .mode-badge.api { background: rgba(59,130,246,0.2); color: #3b82f6; box-shadow: 0 0 8px rgba(59,130,246,0.2); }
+        .mode-badge.systemd { background: rgba(16,185,129,0.2); color: #10b981; box-shadow: 0 0 8px rgba(16,185,129,0.2); }
+        
+        /* Connection Status Indicator */
+        .connection-status { display: flex; align-items: center; gap: 6px; font-size: 11px; padding: 4px 10px; border-radius: 12px; background: var(--bg-tertiary); }
+        .connection-dot { width: 8px; height: 8px; border-radius: 50%; }
+        .connection-dot.connected { background: #10b981; box-shadow: 0 0 6px rgba(16,185,129,0.5); }
+        .connection-dot.reconnecting { background: #f59e0b; animation: pulse 1s infinite; }
+        .connection-dot.polling { background: #3b82f6; }
+        .connection-dot.disconnected { background: #ef4444; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+        
         @media (max-width: 900px) {
             .pipeline-container { padding: 16px; }
             .pipeline-node { width: 140px; padding: 12px; }
@@ -281,6 +312,10 @@
     <div class="header">
         <h1>Lead Gen Pipeline Dashboard</h1>
         <div style="display: flex; gap: 8px; align-items: center;">
+            <div class="connection-status" id="connection-status">
+                <span class="connection-dot disconnected" id="connection-dot"></span>
+                <span id="connection-text">Connecting...</span>
+            </div>
             <button class="btn btn-sm" id="theme-toggle" onclick="toggleTheme()" aria-label="Toggle dark mode">🌙</button>
             <button class="btn btn-secondary" onclick="viewLogs()" aria-label="View pipeline logs">Logs</button>
             <button class="btn btn-secondary" onclick="openExportModal()" aria-label="Export emails">Export</button>
@@ -316,7 +351,18 @@
 </div>
         
         <div class="pipeline-container" id="pipeline">
-            <div class="pipeline-map" id="pipeline-map" style="justify-content: center;"></div>
+            <div style="display: grid; grid-template-columns: 40px auto 1fr; grid-template-areas: 'control gap nodes'; align-items: center;">
+                <div style="grid-area: control;" class="pipeline-control">
+                    <span class="control-label">Control <span class="info-icon">i</span></span>
+                    <label class="mode-toggle" title="Switch between Manual and Auto mode">
+                        <input type="checkbox" id="mode-toggle-input" onchange="togglePipelineMode()">
+                        <span class="toggle-track"></span>
+                    </label>
+                    <span class="mode-badge api" id="mode-badge">Manual</span>
+                </div>
+                <div style="grid-area: gap;"></div>
+                <div class="pipeline-map" id="pipeline-map" style="grid-area: nodes; justify-content: center;"></div>
+            </div>
         </div>
         
 <div class="panels">
@@ -584,82 +630,138 @@
             </div>
         </div>
     </div>
+    
+    <div class="modal" id="mode-confirm-modal">
+        <div class="modal-content" style="max-width: 400px;">
+            <div class="modal-header">
+                <h2 id="mode-confirm-title">Switch Mode</h2>
+                <button onclick="closeModal('mode-confirm-modal')">&times;</button>
+            </div>
+            <div class="modal-body" style="text-align: center;">
+                <p id="mode-confirm-text" style="margin-bottom: 20px; color: var(--text-secondary);"></p>
+                <div style="display: flex; gap: 12px; justify-content: center;">
+                    <button class="btn btn-secondary" onclick="closeModal('mode-confirm-modal')">Cancel</button>
+                    <button class="btn btn-primary" id="mode-confirm-btn" onclick="confirmModeSwitch()">Confirm</button>
+                </div>
+                <div id="mode-confirm-message" style="margin-top: 16px; padding: 12px; border-radius: 6px; display: none;"></div>
+            </div>
+        </div>
+    </div>
 
     <script>
         const API = '/api/v1';
 
 // === WebSocket Real-Time Updates ===
 let ws = null;
-let wsReconnectInterval = null;
-let wsReconnectDelay = 1000; // Start with 1 second
-let wsMaxReconnectDelay = 30000; // Max 30 seconds
-let wsConnectedOnce = false; // Track if we've ever successfully connected
+let wsReconnectTimeout = null;
+let wsReconnectDelay = 1000;
+let wsMaxReconnectDelay = 30000;
+let wsConnectedOnce = false;
+let wsMode = 'websocket'; // 'websocket' or 'polling'
+let pollingInterval = null;
+
+function updateConnectionStatus(status, text) {
+    const dot = document.getElementById('connection-dot');
+    const txt = document.getElementById('connection-text');
+    if (dot) {
+        dot.className = 'connection-dot ' + status;
+    }
+    if (txt) {
+        txt.textContent = text;
+    }
+}
 
 function initWebSocket() {
-  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
-    return; // Already connected or connecting
-  }
-  
-  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  const wsUrl = `${protocol}//${window.location.host}/api/v1/dashboard/ws`;
-  
-  console.log("Connecting to WebSocket:", wsUrl);
-  ws = new WebSocket(wsUrl);
-  
-  ws.onopen = () => {
-    console.log("WebSocket connected");
-    wsConnectedOnce = true;
-    wsReconnectDelay = 1000; // Reset delay on successful connection
-    if (wsReconnectInterval) {
-      clearInterval(wsReconnectInterval);
-      wsReconnectInterval = null;
+    if (wsMode !== 'websocket') return;
+    if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+        return;
     }
-    showToast("Real-time updates enabled", "success");
-  };
-  
-  ws.onmessage = (event) => {
-    try {
-      const message = JSON.parse(event.data);
-      if (message.type === "initial") {
-        renderDashboardData(message.data);
-      } else if (message.type === "update") {
-        // Partial update - just update the relevant section
-        if (message.data.metrics) {
-          updateDashboardMetrics(message.data.metrics);
+    
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const wsUrl = `${protocol}//${window.location.host}/api/v1/dashboard/ws`;
+    
+    console.log("Connecting to WebSocket:", wsUrl);
+    ws = new WebSocket(wsUrl);
+    
+    ws.onopen = () => {
+        console.log("WebSocket connected");
+        wsConnectedOnce = true;
+        wsReconnectDelay = 1000;
+        if (wsReconnectTimeout) {
+            clearTimeout(wsReconnectTimeout);
+            wsReconnectTimeout = null;
         }
-        if (message.data.pipeline) {
-          renderPipelineMap(message.data.pipeline);
-          detectBottlenecks(message.data.pipeline);
+        updateConnectionStatus('connected', 'WS Connected');
+        if (pollingInterval) {
+            clearInterval(pollingInterval);
+            pollingInterval = null;
         }
-      }
-    } catch (e) {
-      console.error("WebSocket message error:", e);
-    }
-  };
-  
-  ws.onclose = () => {
-    console.log("WebSocket disconnected");
-    // Only schedule reconnect if we've ever had a successful connection
-    if (wsConnectedOnce) {
-      scheduleReconnect();
-    } else {
-      console.log("WebSocket not available - running in polling mode");
-    }
-  };
-  
-  ws.onerror = (error) => {
-    console.error("WebSocket error:", error);
-  };
+    };
+    
+    ws.onmessage = (event) => {
+        try {
+            const message = JSON.parse(event.data);
+            if (message.type === "initial") {
+                renderDashboardData(message.data);
+            } else if (message.type === "update") {
+                if (message.data.metrics) {
+                    updateDashboardMetrics(message.data.metrics);
+                }
+                if (message.data.pipeline) {
+                    renderPipelineMap(message.data.pipeline);
+                    detectBottlenecks(message.data.pipeline);
+                }
+            } else if (message.type === "ping") {
+                // Server ping - respond with pong
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({type: "pong"}));
+                }
+            } else if (message.type === "pong") {
+                // Server responded to our ping
+            }
+        } catch (e) {
+            console.error("WebSocket message error:", e);
+        }
+    };
+    
+    ws.onclose = () => {
+        console.log("WebSocket disconnected");
+        updateConnectionStatus('reconnecting', 'Reconnecting...');
+        // Only schedule reconnect if we've ever had a successful connection
+        if (wsConnectedOnce) {
+            scheduleReconnect();
+        } else {
+            console.log("WebSocket not available - switching to polling mode");
+            switchToPolling();
+        }
+    };
+    
+    ws.onerror = (error) => {
+        console.error("WebSocket error:", error);
+    };
 }
 
 function scheduleReconnect() {
-  if (wsReconnectInterval) return;
-  
-  wsReconnectInterval = setInterval(() => {
-    wsReconnectDelay = Math.min(wsReconnectDelay * 2, wsMaxReconnectDelay);
-    console.log(`Reconnection attempt in ${wsReconnectDelay}ms...`);
-    initWebSocket();
-  }, wsReconnectDelay);
+    if (wsReconnectTimeout) return;
+    
+    wsReconnectTimeout = setTimeout(() => {
+        wsReconnectDelay = Math.min(wsReconnectDelay * 2, wsMaxReconnectDelay);
+        console.log(`Reconnection attempt in ${wsReconnectDelay}ms...`);
+        initWebSocket();
+    }, wsReconnectDelay);
+}
+
+function switchToPolling() {
+    wsMode = 'polling';
+    updateConnectionStatus('polling', 'Polling');
+    startPolling();
+}
+
+function startPolling() {
+    if (pollingInterval) clearInterval(pollingInterval);
+    pollingInterval = setInterval(() => {
+        loadDashboard(true);
+    }, 15000);
 }
 
 function updateDashboardMetrics(metrics) {
@@ -1926,10 +2028,96 @@ function animateCounter(element, target, duration = 1000) {
             }, 3000);
         }
         
+        // === Pipeline Mode Toggle ===
+        let pendingMode = null;
+        
+        async function loadPipelineMode() {
+            try {
+                const res = await fetch(`${API}/services/mode`);
+                const data = await res.json();
+                const isSystemd = data.mode === 'systemd';
+                document.getElementById('mode-toggle-input').checked = isSystemd;
+                updateModeBadge(data.mode);
+            } catch (e) {
+                console.error('Failed to load pipeline mode:', e);
+            }
+        }
+        
+        function updateModeBadge(mode) {
+            const badge = document.getElementById('mode-badge');
+            if (mode === 'systemd') {
+                badge.className = 'mode-badge systemd';
+                badge.textContent = 'Auto';
+            } else {
+                badge.className = 'mode-badge api';
+                badge.textContent = 'Manual';
+            }
+        }
+        
+        function togglePipelineMode() {
+            const input = document.getElementById('mode-toggle-input');
+            const newMode = input.checked ? 'systemd' : 'api';
+            pendingMode = newMode;
+            
+            const title = document.getElementById('mode-confirm-title');
+            const text = document.getElementById('mode-confirm-text');
+            
+            if (newMode === 'systemd') {
+                title.textContent = 'Switch to Auto Mode';
+                text.textContent = 'Services will restart automatically if they crash. This is recommended for production. Already running services will continue, stopped services will be started.';
+            } else {
+                title.textContent = 'Switch to Manual Mode';
+                text.textContent = 'You will control when services run. All systemd services will be stopped and disabled. Good for debugging.';
+            }
+            
+            document.getElementById('mode-confirm-message').style.display = 'none';
+            document.getElementById('mode-confirm-modal').classList.add('active');
+        }
+        
+        async function confirmModeSwitch() {
+            if (!pendingMode) return;
+            
+            const btn = document.getElementById('mode-confirm-btn');
+            btn.disabled = true;
+            btn.textContent = 'Switching...';
+            
+            try {
+                const res = await fetch(`${API}/services/mode`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mode: pendingMode })
+                });
+                
+                if (!res.ok) {
+                    throw new Error(`HTTP ${res.status}`);
+                }
+                
+                const data = await res.json();
+                updateModeBadge(data.mode);
+                document.getElementById('mode-toggle-input').checked = data.mode === 'systemd';
+                closeModal('mode-confirm-modal');
+                showToast(`Switched to ${data.mode === 'systemd' ? 'Auto' : 'Manual'} mode`, 'success');
+                
+                // Refresh dashboard to show updated service status
+                setTimeout(() => loadDashboard(true), 2000);
+            } catch (e) {
+                const msgEl = document.getElementById('mode-confirm-message');
+                msgEl.style.display = 'block';
+                msgEl.style.background = 'rgba(239,68,68,0.1)';
+                msgEl.style.color = '#ef4444';
+                msgEl.textContent = `Failed: ${e.message}`;
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Confirm';
+            }
+        }
+        
         // loadDashboard() already fetches job queue data internally
         document.addEventListener('DOMContentLoaded', function() {
+            updateConnectionStatus('reconnecting', 'Connecting...');
             initWebSocket();
             loadDashboard();
+            loadPipelineMode();
         });
     </script>
 </body>

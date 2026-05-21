@@ -366,6 +366,17 @@ class ConnectionManager:
         # Clean up disconnected clients
         for conn in disconnected:
             self.disconnect(conn)
+    
+    async def start_heartbeat(self):
+        """Send heartbeat pings every 30 seconds to keep connections alive."""
+        while True:
+            await asyncio.sleep(30)
+            if self.active_connections:
+                for conn in self.active_connections:
+                    try:
+                        await conn.send_text(json.dumps({"type": "ping"}))
+                    except:
+                        pass
 
 manager = ConnectionManager()
 
@@ -373,13 +384,12 @@ manager = ConnectionManager()
 @router.websocket("/ws")
 async def dashboard_websocket(websocket: WebSocket):
     """WebSocket endpoint for real-time dashboard updates."""
-    print(f"WebSocket connection request received")  # Debug log
+    print(f"WebSocket connection request received")
     await manager.connect(websocket)
     try:
         # Send initial dashboard data
         db = next(get_db())
         initial_data = get_dashboard_stats(db)
-        # Convert Pydantic model to dict for JSON serialization
         if hasattr(initial_data, 'model_dump'):
             initial_dict = initial_data.model_dump()
         else:
@@ -389,11 +399,37 @@ async def dashboard_websocket(websocket: WebSocket):
             "data": initial_dict
         }))
         
-        # Keep connection alive and handle incoming messages
+        # Keep connection alive and handle incoming messages with 60s timeout
         while True:
-            data = await websocket.receive_text()
-            # Echo back for ping/pong
-            await websocket.send_text(json.dumps({"type": "pong"}))
+            try:
+                data = await asyncio.wait_for(
+                    websocket.receive_text(),
+                    timeout=60
+                )
+                # Handle incoming messages
+                try:
+                    msg = json.loads(data)
+                    if msg.get("type") == "request_update":
+                        # Manual refresh request
+                        db = next(get_db())
+                        fresh_data = get_dashboard_stats(db)
+                        if hasattr(fresh_data, 'model_dump'):
+                            fresh_dict = fresh_data.model_dump()
+                        else:
+                            fresh_dict = dict(fresh_data)
+                        await websocket.send_text(json.dumps({
+                            "type": "update",
+                            "data": fresh_dict
+                        }))
+                    elif msg.get("type") == "pong":
+                        pass  # Client responded to ping
+                except json.JSONDecodeError:
+                    pass
+                # Echo back for ping/pong
+                await websocket.send_text(json.dumps({"type": "pong"}))
+            except asyncio.TimeoutError:
+                # Client hasn't sent anything in 60s, send a ping to keep alive
+                await websocket.send_text(json.dumps({"type": "ping"}))
     except WebSocketDisconnect:
         manager.disconnect(websocket)
     except Exception as e:
@@ -403,6 +439,10 @@ async def dashboard_websocket(websocket: WebSocket):
 
 def broadcast_update(update_type: str, data: dict):
     """Broadcast an update to all connected WebSocket clients."""
-    import asyncio
     message = {"type": update_type, "data": data}
-    asyncio.create_task(manager.broadcast(message))
+    try:
+        loop = asyncio.get_running_loop()
+        loop.create_task(manager.broadcast(message))
+    except RuntimeError:
+        # No running event loop - skip broadcast
+        pass

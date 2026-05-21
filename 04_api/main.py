@@ -11,6 +11,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import logging
 import logging.handlers
+import asyncio
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
@@ -20,10 +22,61 @@ from database import init_db
 from config import settings
 from pathlib import Path
 
+# WebSocket heartbeat task
+ws_heartbeat_task = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage startup/shutdown lifecycle."""
+    global ws_heartbeat_task
+    
+    # Startup
+    print("=" * 50)
+    print("Starting Lead Generation API...")
+    print("=" * 50)
+    
+    init_db()
+    
+    # Start WebSocket heartbeat
+    try:
+        from api.v1.endpoints.dashboard import manager as ws_manager
+        ws_heartbeat_task = asyncio.get_running_loop().create_task(
+            ws_heartbeat(ws_manager)
+        )
+        print("WebSocket heartbeat started")
+    except Exception as e:
+        print(f"WebSocket heartbeat failed to start: {e}")
+    
+    yield
+    
+    # Shutdown
+    if ws_heartbeat_task:
+        ws_heartbeat_task.cancel()
+        try:
+            await ws_heartbeat_task
+        except asyncio.CancelledError:
+            pass
+        print("WebSocket heartbeat stopped")
+
+
+async def ws_heartbeat(manager):
+    """Send heartbeat pings to keep WebSocket connections alive."""
+    while True:
+        await asyncio.sleep(30)
+        if manager.active_connections:
+            for conn in manager.active_connections:
+                try:
+                    await conn.send_text('{"type":"ping"}')
+                except Exception:
+                    pass
+
+
 app = FastAPI(
     title="Lead Generation Engine API",
     description="REST API for managing lead discovery, enrichment, and verification",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 BASE_DIR = Path(__file__).parent

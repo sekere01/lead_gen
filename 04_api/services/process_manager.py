@@ -17,6 +17,9 @@ logger = logging.getLogger(__name__)
 # Lock directory for atomic service start
 LOCK_DIR = '/tmp/leadgen_locks'
 
+# Mode file path
+MODE_FILE = '/tmp/leadgen_control_mode'
+
 
 @dataclass
 class ServiceInfo:
@@ -29,22 +32,26 @@ class ServiceInfo:
     last_seen: Optional[datetime] = None
 
 
-# Service configuration
+# Service configuration with service_dir for correct cwd resolution
 SERVICES = {
     'discovery': {
         'script': 'run_discovery.sh',
+        'service_dir': '01_discovery',
         'port': None,
     },
     'browsing': {
         'script': 'run_browsing.sh',
+        'service_dir': '01b_browsing',
         'port': None,
     },
     'enrichment': {
         'script': 'run_enrichment.sh',
+        'service_dir': '02_enrichment',
         'port': None,
     },
     'verification': {
         'script': 'run_verification.sh',
+        'service_dir': '03_verification',
         'port': None,
     },
 }
@@ -68,9 +75,10 @@ class ProcessManager:
         self.scan_existing_processes()
     
     def scan_existing_processes(self):
-        """Scan for already running service processes."""
+        """Scan for already running service processes using dual detection."""
         for service_name, config in SERVICES.items():
             try:
+                # Method 1: Match by script name
                 result = subprocess.run(
                     ['pgrep', '-f', config['script']],
                     capture_output=True,
@@ -78,9 +86,22 @@ class ProcessManager:
                 )
                 if result.stdout.strip():
                     pid = int(result.stdout.strip().split()[0])
-                    self.running_processes[service_name] = None  # We didn't start it, but it's running
+                    self.running_processes[service_name] = None
                     service_start_times[service_name] = datetime.now().timestamp()
-                    logger.info(f"Scanned existing {service_name} (PID: {pid})")
+                    logger.info(f"Scanned existing {service_name} (PID: {pid}) via script")
+                    continue
+                
+                # Method 2: Match by service_dir/main.py pattern
+                result = subprocess.run(
+                    ['pgrep', '-f', f"{config['service_dir']}/venv/bin/python main.py"],
+                    capture_output=True,
+                    text=True
+                )
+                if result.stdout.strip():
+                    pid = int(result.stdout.strip().split()[0])
+                    self.running_processes[service_name] = None
+                    service_start_times[service_name] = datetime.now().timestamp()
+                    logger.info(f"Scanned existing {service_name} (PID: {pid}) via main.py")
             except Exception as e:
                 pass
     
@@ -90,13 +111,31 @@ class ProcessManager:
             return ServiceInfo(name=service_name, script='', status='unknown')
         
         config = SERVICES[service_name]
-        script_path = os.path.join(self.project_dir, config['script'])
         
-        # Check if process is running by matching the script name
+        # Dual method process detection
         for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'create_time']):
             try:
                 cmdline = proc.info.get('cmdline', [])
-                if cmdline and config['script'] in ' '.join(cmdline):
+                if not cmdline:
+                    continue
+                cmdline_str = ' '.join(cmdline)
+                
+                # Method 1: Match by script name
+                if config['script'] in cmdline_str:
+                    uptime = int(datetime.now().timestamp() - proc.info['create_time'])
+                    start_time = service_start_times.get(service_name)
+                    return ServiceInfo(
+                        name=service_name,
+                        script=config['script'],
+                        status='running',
+                        pid=proc.info['pid'],
+                        uptime=uptime,
+                        start_time=start_time,
+                        last_seen=datetime.now()
+                    )
+                
+                # Method 2: Match by service_dir/main.py pattern
+                if f"{config['service_dir']}/venv/bin/python" in cmdline_str and 'main.py' in cmdline_str:
                     uptime = int(datetime.now().timestamp() - proc.info['create_time'])
                     start_time = service_start_times.get(service_name)
                     return ServiceInfo(
@@ -131,7 +170,8 @@ class ProcessManager:
             return {'success': False, 'error': f'Unknown service: {service_name}'}
         
         config = SERVICES[service_name]
-        script_path = os.path.join(self.project_dir, config['script'])
+        script_path = os.path.join(self.project_dir, config['service_dir'], config['script'])
+        service_dir = os.path.join(self.project_dir, config['service_dir'])
         
         # Ensure lock directory exists
         os.makedirs(LOCK_DIR, exist_ok=True)
@@ -177,6 +217,15 @@ class ProcessManager:
             except Exception:
                 pass
             
+            # Also kill by main.py pattern
+            try:
+                subprocess.run(
+                    ['pkill', '-9', '-f', f"{config['service_dir']}/venv/bin/python main.py"],
+                    capture_output=True
+                )
+            except Exception:
+                pass
+            
             time.sleep(0.5)
             
             # Ensure script is executable
@@ -185,11 +234,11 @@ class ProcessManager:
             # Log file path
             log_file = f'/tmp/{service_name}.out'
             
-            # Start the service - fire and forget, return immediately
+            # Start the service from the service directory (correct cwd)
             with open(log_file, 'a') as log_out:
                 process = subprocess.Popen(
                     [f'./{config["script"]}'],
-                    cwd=self.project_dir,
+                    cwd=service_dir,
                     stdout=log_out,
                     stderr=subprocess.STDOUT,
                     start_new_session=True
@@ -250,6 +299,7 @@ class ProcessManager:
         result = self.stop_service(service_name)
         if not result.get('success'):
             return result
+        time.sleep(1)
         return self.start_service(service_name)
     
     def get_health_status(self) -> Dict:
@@ -277,6 +327,51 @@ class ProcessManager:
         """Refresh service status cache."""
         # Status is always fresh because get_service_status checks psutil each time
         return {'success': True}
+    
+    def get_mode(self) -> str:
+        """Get current control mode: 'api' (manual) or 'systemd' (auto)."""
+        try:
+            if os.path.exists(MODE_FILE):
+                with open(MODE_FILE, 'r') as f:
+                    mode = f.read().strip()
+                    if mode in ('api', 'systemd'):
+                        return mode
+        except Exception:
+            pass
+        return 'api'  # Default to manual/API control
+    
+    def set_mode(self, mode: str) -> Dict:
+        """Set control mode and apply changes."""
+        if mode not in ('api', 'systemd'):
+            return {'success': False, 'error': f'Invalid mode: {mode}. Must be "api" or "systemd"'}
+        
+        try:
+            os.makedirs(os.path.dirname(MODE_FILE) if os.path.dirname(MODE_FILE) else '.', exist_ok=True)
+            with open(MODE_FILE, 'w') as f:
+                f.write(mode)
+            
+            if mode == 'systemd':
+                # Enable all systemd services
+                systemd_services = ['discovery', 'browsing', 'enrichment', 'verification']
+                for svc in systemd_services:
+                    status = self.get_service_status(svc)
+                    if status.status == 'running':
+                        # Just enable, don't restart
+                        subprocess.run(['sudo', 'systemctl', 'enable', f'leadgen-{svc}'], capture_output=True)
+                    else:
+                        # Enable and start
+                        subprocess.run(['sudo', 'systemctl', 'enable', f'leadgen-{svc}'], capture_output=True)
+                        subprocess.run(['sudo', 'systemctl', 'start', f'leadgen-{svc}'], capture_output=True)
+            else:
+                # Disable all systemd services
+                systemd_services = ['discovery', 'browsing', 'enrichment', 'verification']
+                for svc in systemd_services:
+                    subprocess.run(['sudo', 'systemctl', 'stop', f'leadgen-{svc}'], capture_output=True)
+                    subprocess.run(['sudo', 'systemctl', 'disable', f'leadgen-{svc}'], capture_output=True)
+            
+            return {'success': True, 'mode': mode}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
 
 
 process_manager = ProcessManager()

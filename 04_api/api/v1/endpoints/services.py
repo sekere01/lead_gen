@@ -33,6 +33,14 @@ class ServiceActionResponse(BaseModel):
     error: Optional[str] = None
 
 
+class ModeResponse(BaseModel):
+    mode: str
+
+
+class ModeRequest(BaseModel):
+    mode: str
+
+
 @router.get("/status", response_model=List[ServiceResponse])
 def get_services_status():
     """Get status of all pipeline services."""
@@ -127,3 +135,19 @@ def refresh_services():
     """Refresh service status cache."""
     process_manager.refresh_status()
     return {"success": True}
+
+
+@router.get("/mode", response_model=ModeResponse)
+def get_mode():
+    """Get current control mode: 'api' (manual) or 'systemd' (auto)."""
+    return {"mode": process_manager.get_mode()}
+
+
+@router.post("/mode", response_model=ModeResponse)
+def set_mode(request: ModeRequest):
+    """Set control mode and apply changes."""
+    result = process_manager.set_mode(request.mode)
+    if result.get('success'):
+        return {"mode": result['mode']}
+    from fastapi import HTTPException
+    raise HTTPException(status_code=400, detail=result.get('error', 'Failed to set mode'))

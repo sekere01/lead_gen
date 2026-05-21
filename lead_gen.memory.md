@@ -547,3 +547,47 @@ browsing:     running (uptime: 7s)
 enrichment:   running (uptime: 5s)
 verification: running (uptime: 4s)
 ```
+## Logging Audit & Enhancement (2026-05-21)
+
+### Problem
+1. **Service log files** (`logs/discovery.log`, etc.) only captured WARNING+ messages — normal operation logs (jobs processed, companies browsed, emails saved) were lost on restart
+2. **API endpoints had no logging** — 7 of 7 endpoint files lacked `import logging` entirely
+3. **process_manager.py** logged nothing for start/stop/restart/health lifecycle events
+4. **dashboard.py** used `print()` instead of proper logging
+5. **API file handler** was attached only to `uvicorn.error`/`uvicorn.access` — endpoint module logs were silently dropped
+
+### Changes Made
+
+#### 1. Normalized file handler levels (WARNING → INFO)
+- `01_discovery/main.py:40`
+- `01b_browsing/main.py:36`
+- `02_enrichment/main.py:45`
+- `03_verification/main.py:36`
+- `04_api/main.py:82`
+
+#### 2. Added logging to all API endpoints (+ lifecycle logging)
+| File | What is logged |
+|---|---|
+| `endpoints/services.py` | Start/stop/restart requests + results, mode changes, health checks, log requests |
+| `endpoints/dashboard.py` | WebSocket connect/disconnect/errors (replaced `print()`) |
+| `endpoints/companies.py` | Company list errors, specific company lookups |
+| `endpoints/contacts.py` | Contact list errors, specific contact lookups |
+| `endpoints/search.py` | Search failures |
+| `endpoints/export.py` | Export/preview email counts |
+| `endpoints/verification.py` | Single email verify results |
+| `services/process_manager.py` | Start/stop/restart entry + success/PID + errors, health checks |
+
+#### 3. Fixed API log propagation
+- Added file handler to root logger with level INFO so module loggers propagate through
+- Converted `print()` calls in `main.py` lifespan to `logger.info()`
+
+#### 4. Minor module logging
+- Added `import logging` to `email_extractor.py`, `job_stats_service.py`
+
+### Verification
+- `api.log` now shows endpoint-specific messages:
+  - `"Health check: healthy (2/4 running)"`
+  - `"Start requested: discovery"` → `"Starting service: discovery"` → `"Service discovery started (PID: 212170)"` → `"Start succeeded: discovery"`
+  - `"Email verify: test@example.com -> valid_verified"`
+  - `"Preview 386 emails (verified=True, limit=5, search=None)"`
+- `discovery.log` has INFO entries (previously only WARNING+)

@@ -157,7 +157,7 @@
         .mode-toggle input:checked + .toggle-track { background: #166534; box-shadow: 0 0 12px rgba(16,185,129,0.3); }
         .mode-toggle input:checked + .toggle-track::before { transform: translateX(18px); background: linear-gradient(145deg, #34d399, #10b981); }
 
-        .mode-badge { font-size: clamp(7px, 1.3vw, 9px); padding: 2px 6px; border-radius: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; max-width: 40px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; }
+        .mode-badge { font-size: clamp(6px, 1.1vw, 8px); padding: 1px 5px; border-radius: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; max-width: 40px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; }
         .mode-badge.api { background: rgba(59,130,246,0.2); color: #3b82f6; box-shadow: 0 0 8px rgba(59,130,246,0.2); }
         .mode-badge.systemd { background: rgba(16,185,129,0.2); color: #10b981; box-shadow: 0 0 8px rgba(16,185,129,0.2); }
         
@@ -180,7 +180,7 @@
         
         @media (max-width: 400px) {
             .control-label { font-size: 6px; }
-            .mode-badge { font-size: 6px; }
+            .mode-badge { font-size: 5px; }
         }
         
         @media (max-width: 600px) {
@@ -357,7 +357,7 @@
         <div class="pipeline-container" id="pipeline">
             <div style="display: grid; grid-template-columns: 40px auto 1fr; grid-template-areas: 'control gap nodes'; align-items: center;">
                 <div style="grid-area: control;" class="pipeline-control">
-                    <span class="control-label">Control <span class="info-icon">i</span></span>
+                    <span class="control-label">P.Ctrl <span class="info-icon">i</span></span>
                     <label class="mode-toggle" title="Switch between Manual and Auto mode">
                         <input type="checkbox" id="mode-toggle-input" onchange="togglePipelineMode()">
                         <span class="toggle-track"></span>

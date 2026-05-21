@@ -25,6 +25,13 @@
 - [x] Service log files normalized to INFO level (was WARNING only)
 - [x] API endpoint logging added (7 endpoint files + process_manager lifecycle)
 - [x] API log propagation fixed (root logger handler at INFO level)
+- [x] Modal popups fixed - show immediately with loading spinner instead of waiting for API fetch
+- [x] Service metrics fixed - all 4 services write metrics every 60s
+- [x] Metric names aligned with frontend (companies_found → companies_total)
+- [x] Timezone bug fixed in GET /dashboard/metrics (local → UTC)
+- [x] Added write_metrics() to browsing, enrichment, verification services
+- [x] Installed httpx in verification venv
+- [x] process_manager PATH fix - always set standard dirs
 
 ## Architecture
 - Services and how they connect: 5 microservices (Discovery, Browsing, Enrichment, Verification, API) communicating via PostgreSQL database and Redis/Celery

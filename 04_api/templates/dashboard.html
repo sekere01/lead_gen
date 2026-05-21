@@ -152,11 +152,10 @@
         .toggle-track::before { content: ''; position: absolute; height: 14px; width: 14px; left: 4px; bottom: 4px; background: linear-gradient(145deg, #60a5fa, #3b82f6); border-radius: 50%; transition: all 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55); box-shadow: 0 2px 4px rgba(0,0,0,0.3); }
         .mode-toggle input:checked + .toggle-track { background: #166534; box-shadow: 0 0 12px rgba(16,185,129,0.3); }
         .mode-toggle input:checked + .toggle-track::before { transform: translateX(18px); background: linear-gradient(145deg, #34d399, #10b981); }
-        .toggle-labels { display: flex; justify-content: space-between; width: 56px; margin-top: 4px; }
-        .toggle-label { font-size: 9px; color: #64748b; opacity: 0; transition: opacity 0.3s; }
-        .mode-toggle:hover .toggle-label { opacity: 1; }
-        .mode-toggle input:checked ~ .toggle-labels .label-auto { opacity: 1; color: #10b981; }
-        .mode-toggle:not(:checked) ~ .toggle-labels .label-manual { opacity: 1; color: #3b82f6; }
+        .toggle-labels { display: flex; justify-content: space-between; width: 56px; margin-top: 4px; font-size: 9px; }
+        .toggle-labels .label-manual { color: #3b82f6; }
+        .toggle-labels .label-auto { color: #64748b; }
+        .mode-toggle input:checked ~ .toggle-labels .label-auto { color: #10b981; }
         
         .mode-badge { font-size: 9px; padding: 2px 6px; border-radius: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
         .mode-badge.api { background: rgba(59,130,246,0.2); color: #3b82f6; box-shadow: 0 0 8px rgba(59,130,246,0.2); }
@@ -357,6 +356,7 @@
                     <label class="mode-toggle" title="Switch between Manual and Auto mode">
                         <input type="checkbox" id="mode-toggle-input" onchange="togglePipelineMode()">
                         <span class="toggle-track"></span>
+                        <span class="toggle-labels"><span class="label-manual">Manual</span><span class="label-auto">Auto</span></span>
                     </label>
                     <span class="mode-badge api" id="mode-badge">Manual</span>
                 </div>
@@ -2078,6 +2078,9 @@ function animateCounter(element, target, duration = 1000) {
             if (!pendingMode) return;
             
             const btn = document.getElementById('mode-confirm-btn');
+            const input = document.getElementById('mode-toggle-input');
+            const previousMode = input.checked ? 'systemd' : 'api';
+            
             btn.disabled = true;
             btn.textContent = 'Switching...';
             
@@ -2094,13 +2097,16 @@ function animateCounter(element, target, duration = 1000) {
                 
                 const data = await res.json();
                 updateModeBadge(data.mode);
-                document.getElementById('mode-toggle-input').checked = data.mode === 'systemd';
+                input.checked = data.mode === 'systemd';
                 closeModal('mode-confirm-modal');
-                showToast(`Switched to ${data.mode === 'systemd' ? 'Auto' : 'Manual'} mode`, 'success');
                 
-                // Refresh dashboard to show updated service status
+                let msg = `Switched to ${data.mode === 'systemd' ? 'Auto' : 'Manual'} mode`;
+                if (data.warning) msg += ` (${data.warning})`;
+                showToast(msg, data.warning ? 'warning' : 'success');
+                
                 setTimeout(() => loadDashboard(true), 2000);
             } catch (e) {
+                input.checked = previousMode === 'systemd';
                 const msgEl = document.getElementById('mode-confirm-message');
                 msgEl.style.display = 'block';
                 msgEl.style.background = 'rgba(239,68,68,0.1)';

@@ -350,26 +350,27 @@ class ProcessManager:
             with open(MODE_FILE, 'w') as f:
                 f.write(mode)
             
-            if mode == 'systemd':
-                # Enable all systemd services
-                systemd_services = ['discovery', 'browsing', 'enrichment', 'verification']
-                for svc in systemd_services:
-                    status = self.get_service_status(svc)
-                    if status.status == 'running':
-                        # Just enable, don't restart
-                        subprocess.run(['sudo', 'systemctl', 'enable', f'leadgen-{svc}'], capture_output=True)
-                    else:
-                        # Enable and start
-                        subprocess.run(['sudo', 'systemctl', 'enable', f'leadgen-{svc}'], capture_output=True)
-                        subprocess.run(['sudo', 'systemctl', 'start', f'leadgen-{svc}'], capture_output=True)
-            else:
-                # Disable all systemd services
-                systemd_services = ['discovery', 'browsing', 'enrichment', 'verification']
-                for svc in systemd_services:
-                    subprocess.run(['sudo', 'systemctl', 'stop', f'leadgen-{svc}'], capture_output=True)
-                    subprocess.run(['sudo', 'systemctl', 'disable', f'leadgen-{svc}'], capture_output=True)
+            systemd_warning = None
+            try:
+                if mode == 'systemd':
+                    for svc in ['discovery', 'browsing', 'enrichment', 'verification']:
+                        status = self.get_service_status(svc)
+                        if status.status == 'running':
+                            subprocess.run(['sudo', 'systemctl', 'enable', f'leadgen-{svc}'], capture_output=True, check=False)
+                        else:
+                            subprocess.run(['sudo', 'systemctl', 'enable', f'leadgen-{svc}'], capture_output=True, check=False)
+                            subprocess.run(['sudo', 'systemctl', 'start', f'leadgen-{svc}'], capture_output=True, check=False)
+                else:
+                    for svc in ['discovery', 'browsing', 'enrichment', 'verification']:
+                        subprocess.run(['sudo', 'systemctl', 'stop', f'leadgen-{svc}'], capture_output=True, check=False)
+                        subprocess.run(['sudo', 'systemctl', 'disable', f'leadgen-{svc}'], capture_output=True, check=False)
+            except FileNotFoundError:
+                systemd_warning = 'Mode saved, but sudo not available - systemd commands skipped'
             
-            return {'success': True, 'mode': mode}
+            result = {'success': True, 'mode': mode}
+            if systemd_warning:
+                result['warning'] = systemd_warning
+            return result
         except Exception as e:
             return {'success': False, 'error': str(e)}
 

@@ -20,6 +20,11 @@
 - [x] Dashboard API working (dashboard/stats returns data)
 - [x] PostgreSQL authentication fixed
 - [x] Pipeline Control toggle (Auto/Manual mode) implemented
+- [x] Manual mode services not starting fixed (subprocess env + PATH)
+- [x] Full logging audit and enhancement (15 files, 89 insertions)
+- [x] Service log files normalized to INFO level (was WARNING only)
+- [x] API endpoint logging added (7 endpoint files + process_manager lifecycle)
+- [x] API log propagation fixed (root logger handler at INFO level)
 
 ## Architecture
 - Services and how they connect: 5 microservices (Discovery, Browsing, Enrichment, Verification, API) communicating via PostgreSQL database and Redis/Celery
@@ -547,6 +552,7 @@ browsing:     running (uptime: 7s)
 enrichment:   running (uptime: 5s)
 verification: running (uptime: 4s)
 ```
+
 ## Logging Audit & Enhancement (2026-05-21)
 
 ### Problem

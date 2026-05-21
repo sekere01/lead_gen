@@ -597,6 +597,10 @@ echo "[14/15] Configuring sudoers..."
 if [ "$DRY_RUN" = true ]; then
     echo "    Would add sudoers entry for $DEPLOY_USER"
 else
+    if [ -f /etc/sudoers.d/leadgen ]; then
+        echo "    Sudoers file already exists, backing up..."
+        cp /etc/sudoers.d/leadgen "/etc/sudoers.d/leadgen.bak.$(date +%Y%m%d%H%M%S)"
+    fi
     echo "$DEPLOY_USER ALL=(ALL) NOPASSWD: /bin/systemctl start leadgen-*, /bin/systemctl stop leadgen-*, /bin/systemctl restart leadgen-*, /bin/systemctl enable leadgen-*, /bin/systemctl disable leadgen-*, /bin/systemctl daemon-reload" > /etc/sudoers.d/leadgen
     chmod 440 /etc/sudoers.d/leadgen
 

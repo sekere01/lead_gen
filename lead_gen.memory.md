@@ -504,6 +504,20 @@ When running uvicorn, do NOT use `reload=True` in production as it spawns multip
 
 ### Verification
 - `POST /api/v1/services/mode` returns `{"mode":"api"}` or `{"mode":"systemd"}` successfully
-- When sudo unavailable: returns `{"mode":"api","warning":"Mode saved, but sudo not available..."}`
+- When sudo unavailable: returns `{"mode":"api","warning":"Mode saved, but systemd commands skipped..."}`
 - Dashboard toggle checkbox reverts correctly on failure
 - Toggle labels display correctly
+
+### Manual Action Required: Update Sudoers File
+The existing `/etc/sudoers.d/leadgen` file (created May 20) only has start/stop/restart commands. It needs enable/disable commands for the mode toggle to work properly.
+
+**Run this command:**
+```bash
+sudo cp /home/kali/lead_gen/sudoers_leadgen /etc/sudoers.d/leadgen && sudo chmod 440 /etc/sudoers.d/leadgen
+```
+
+**Verify with:**
+```bash
+sudo -l | grep leadgen
+```
+Should show: `NOPASSWD: /bin/systemctl start leadgen-*, /bin/systemctl stop leadgen-*, /bin/systemctl restart leadgen-*, /bin/systemctl enable leadgen-*, /bin/systemctl disable leadgen-*, /bin/systemctl daemon-reload`

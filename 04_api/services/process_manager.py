@@ -350,22 +350,34 @@ class ProcessManager:
             with open(MODE_FILE, 'w') as f:
                 f.write(mode)
             
+            # Use absolute paths to avoid PATH issues in subprocess
+            SUDO = '/usr/bin/sudo'
+            SYSTEMCTL = '/bin/systemctl'
+            
             systemd_warning = None
             try:
                 if mode == 'systemd':
                     for svc in ['discovery', 'browsing', 'enrichment', 'verification']:
                         status = self.get_service_status(svc)
                         if status.status == 'running':
-                            subprocess.run(['sudo', 'systemctl', 'enable', f'leadgen-{svc}'], capture_output=True, check=False)
+                            result = subprocess.run([SUDO, SYSTEMCTL, 'enable', f'leadgen-{svc}'], capture_output=True, check=False)
+                            if result.returncode != 0:
+                                logger.warning(f"Failed to enable leadgen-{svc}: {result.stderr.decode()}")
                         else:
-                            subprocess.run(['sudo', 'systemctl', 'enable', f'leadgen-{svc}'], capture_output=True, check=False)
-                            subprocess.run(['sudo', 'systemctl', 'start', f'leadgen-{svc}'], capture_output=True, check=False)
+                            subprocess.run([SUDO, SYSTEMCTL, 'enable', f'leadgen-{svc}'], capture_output=True, check=False)
+                            result = subprocess.run([SUDO, SYSTEMCTL, 'start', f'leadgen-{svc}'], capture_output=True, check=False)
+                            if result.returncode != 0:
+                                logger.warning(f"Failed to start leadgen-{svc}: {result.stderr.decode()}")
                 else:
                     for svc in ['discovery', 'browsing', 'enrichment', 'verification']:
-                        subprocess.run(['sudo', 'systemctl', 'stop', f'leadgen-{svc}'], capture_output=True, check=False)
-                        subprocess.run(['sudo', 'systemctl', 'disable', f'leadgen-{svc}'], capture_output=True, check=False)
-            except FileNotFoundError:
-                systemd_warning = 'Mode saved, but sudo not available - systemd commands skipped'
+                        result = subprocess.run([SUDO, SYSTEMCTL, 'stop', f'leadgen-{svc}'], capture_output=True, check=False)
+                        if result.returncode != 0:
+                            logger.warning(f"Failed to stop leadgen-{svc}: {result.stderr.decode()}")
+                        result = subprocess.run([SUDO, SYSTEMCTL, 'disable', f'leadgen-{svc}'], capture_output=True, check=False)
+                        if result.returncode != 0:
+                            logger.warning(f"Failed to disable leadgen-{svc}: {result.stderr.decode()}")
+            except FileNotFoundError as e:
+                systemd_warning = f'Mode saved, but systemd commands skipped: {e}'
             
             result = {'success': True, 'mode': mode}
             if systemd_warning:

@@ -300,6 +300,12 @@
           margin-top: 8px;
         }
 
+        .skeleton-pulse {
+          opacity: 0.5;
+          pointer-events: none;
+          transition: opacity 0.2s;
+        }
+
         .skeleton-text {
           height: 16px;
           width: 100%;
@@ -316,6 +322,10 @@
     <div class="header">
         <h1>Lead Gen Pipeline Dashboard</h1>
         <div style="display: flex; gap: 8px; align-items: center;">
+            <div class="connection-status" id="db-status">
+                <span class="connection-dot connected" id="db-dot"></span>
+                <span id="db-text">DB —</span>
+            </div>
             <div class="connection-status" id="connection-status">
                 <span class="connection-dot disconnected" id="connection-dot"></span>
                 <span id="connection-text">Connecting...</span>
@@ -663,6 +673,9 @@ let wsMaxReconnectDelay = 30000;
 let wsConnectedOnce = false;
 let wsMode = 'websocket'; // 'websocket' or 'polling'
 let pollingInterval = null;
+let dashboardIntervalId = null;
+let wsUpdateInterval = null;
+let previousCounters = {};
 
 function updateConnectionStatus(status, text) {
     const dot = document.getElementById('connection-dot');
@@ -672,6 +685,22 @@ function updateConnectionStatus(status, text) {
     }
     if (txt) {
         txt.textContent = text;
+    }
+}
+
+function updateDbStatus(db_status) {
+    const dot = document.getElementById('db-dot');
+    const txt = document.getElementById('db-text');
+    if (!dot || !txt) return;
+    if (db_status && db_status.status === 'connected') {
+        dot.className = 'connection-dot connected';
+        txt.textContent = 'DB ' + db_status.latency_ms + 'ms';
+    } else if (db_status && db_status.status === 'disconnected') {
+        dot.className = 'connection-dot disconnected';
+        txt.textContent = 'DB ERR';
+    } else {
+        dot.className = 'connection-dot disconnected';
+        txt.textContent = 'DB —';
     }
 }
 
@@ -700,6 +729,18 @@ function initWebSocket() {
             clearInterval(pollingInterval);
             pollingInterval = null;
         }
+        if (dashboardIntervalId) {
+            clearInterval(dashboardIntervalId);
+            dashboardIntervalId = null;
+        }
+        // Periodic update requests via WebSocket
+        if (!wsUpdateInterval) {
+            wsUpdateInterval = setInterval(() => {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({type: "request_update"}));
+                }
+            }, 30000);
+        }
     };
     
     ws.onmessage = (event) => {
@@ -714,6 +755,9 @@ function initWebSocket() {
                 if (message.data.pipeline) {
                     renderPipelineMap(message.data.pipeline);
                     detectBottlenecks(message.data.pipeline);
+                }
+                if (message.data.db_status) {
+                    updateDbStatus(message.data.db_status);
                 }
             } else if (message.type === "ping") {
                 // Server ping - respond with pong
@@ -731,6 +775,14 @@ function initWebSocket() {
     ws.onclose = () => {
         console.log("WebSocket disconnected");
         updateConnectionStatus('reconnecting', 'Reconnecting...');
+        if (wsUpdateInterval) {
+            clearInterval(wsUpdateInterval);
+            wsUpdateInterval = null;
+        }
+        // Start dashboard polling fallback during reconnect
+        if (!dashboardIntervalId) {
+            dashboardIntervalId = setInterval(() => loadDashboard(), 30000);
+        }
         // Only schedule reconnect if we've ever had a successful connection
         if (wsConnectedOnce) {
             scheduleReconnect();
@@ -759,6 +811,10 @@ function switchToPolling() {
     wsMode = 'polling';
     updateConnectionStatus('polling', 'Polling');
     startPolling();
+    // Restart dashboard interval as fallback
+    if (!dashboardIntervalId) {
+        dashboardIntervalId = setInterval(() => loadDashboard(), 30000);
+    }
 }
 
 function startPolling() {
@@ -797,6 +853,7 @@ function updateDashboardMetrics(metrics) {
             html.setAttribute('data-theme', newTheme);
             localStorage.setItem('theme', newTheme);
             document.getElementById('theme-toggle').textContent = newTheme === 'dark' ? '☀️' : '🌙';
+            loadMetrics();
         }
         
         // Load saved theme preference
@@ -833,9 +890,12 @@ function showSkeleton() {
       el.classList.add('skeleton', 'skeleton-stat');
     }
   });
+  // Add skeleton overlay to pipeline container without destroying children
   const pipelineMap = document.getElementById('pipeline-map');
-  if (pipelineMap) {
+  if (pipelineMap && !pipelineMap.querySelector('.pipeline-node')) {
     pipelineMap.innerHTML = '<div class="skeleton" style="height: 200px; width: 100%;"></div>';
+  } else if (pipelineMap) {
+    pipelineMap.classList.add('skeleton-pulse');
   }
 }
 
@@ -848,6 +908,11 @@ function hideSkeleton() {
       el.classList.remove('skeleton', 'skeleton-stat');
     }
   });
+  // Remove skeleton pulse from pipeline container
+  const pipelineMap = document.getElementById('pipeline-map');
+  if (pipelineMap) {
+    pipelineMap.classList.remove('skeleton-pulse');
+  }
 }
 
         async function loadDashboard(forceRefresh = false) {
@@ -878,7 +943,9 @@ function hideSkeleton() {
                 
                 // Update cache
                 setCachedDashboard(data);
-                
+
+                updateDbStatus(data.db_status);
+
                 animateCounter(document.getElementById('total-companies'), data.metrics.companies_total);
                 animateCounter(document.getElementById('total-contacts'), data.metrics.contacts_total);
                 animateCounter(document.getElementById('verified-contacts'), data.metrics.verified_count);
@@ -984,12 +1051,18 @@ function hideSkeleton() {
                 setTimeout(() => toast.remove(), 300);
             }, 4000);
         }
-// Smooth counter animation
+// Smooth counter animation - only animates if value changed
 function animateCounter(element, target, duration = 1000) {
   if (!element) {
     console.warn('animateCounter: element not found');
     return;
   }
+  const key = element.id || element;
+  if (previousCounters[key] === target) {
+    element.textContent = target;
+    return;
+  }
+  previousCounters[key] = target;
   const start = 0;
   const increment = target / (duration / 16);
   let current = 0;
@@ -1011,6 +1084,8 @@ function animateCounter(element, target, duration = 1000) {
             // Reset exponential backoff after successful refresh
             window.serviceActionCount = 0;
             
+            updateDbStatus(data.db_status);
+
             // Render pipeline data (shared between cache and fresh)
             animateCounter(document.getElementById('total-companies'), data.metrics.companies_total);
             animateCounter(document.getElementById('total-contacts'), data.metrics.contacts_total);
@@ -1052,13 +1127,15 @@ function animateCounter(element, target, duration = 1000) {
                 
                 // Empty state handling
                 if (!data.data || data.data.length === 0) {
+                    if (metricsChart) { metricsChart.destroy(); metricsChart = null; }
+                    const container = canvas.parentElement;
+                    canvas.width = container.clientWidth || 400;
+                    canvas.height = container.clientHeight || 250;
                     const ctx = canvas.getContext('2d');
                     ctx.clearRect(0, 0, canvas.width, canvas.height);
-                    ctx.font = '14px Inter';
+                    ctx.font = '14px sans-serif';
                     ctx.fillStyle = '#64748b';
                     ctx.textAlign = 'center';
-                    
-                    // Show helpful message based on window
                     const windowDisplay = currentWindow === '5m' ? '5 minutes' : currentWindow === '1h' ? '1 hour' : '24 hours';
                     if (data.error && data.error.includes('No data')) {
                         ctx.fillText(data.error, canvas.width / 2, canvas.height / 2);
@@ -1066,7 +1143,7 @@ function animateCounter(element, target, duration = 1000) {
                         ctx.fillText(`No data in last ${windowDisplay} — services may not have written metrics yet`, canvas.width / 2, canvas.height / 2);
                     }
                     return;
-}
+                }
                  
                 // Format timestamp based on window selection
                 function formatTimestamp(ts, window) {
@@ -1109,7 +1186,6 @@ function animateCounter(element, target, duration = 1000) {
                 const metricColors = {
                     'companies_total': '#1e40af',
                     'jobs_pending': '#dc2626',
-                    'jobs_processing': '#f59e0b',
                     'jobs_completed': '#16a34a',
                     'jobs_failed': '#991b1b',
                     'pages_browsed': '#7c3aed',
@@ -1183,21 +1259,31 @@ function animateCounter(element, target, duration = 1000) {
                 
                 // Update existing chart in place (no destroy), or create new one
                 if (metricsChart) {
-                    // Same service/window? Update data in place
                     if (metricsChart._service === metricsService && 
                         metricsChart._window === currentWindow) {
-                        metricsChart.data.labels = labels;
-                        metricsChart.data.datasets.forEach((ds, i) => {
-                            if (datasets[i]) {
-                                ds.data = datasets[i].data;
-                            }
-                        });
-                        metricsChart.update('none'); // instant, no animation
-                        return;
+                        // Dataset count changed? Destroy and recreate to avoid ghost lines
+                        if (datasets.length !== metricsChart.data.datasets.length) {
+                            metricsChart.destroy();
+                            metricsChart = null;
+                        } else {
+                            metricsChart.data.labels = labels;
+                            metricsChart.data.datasets.forEach((ds, i) => {
+                                if (datasets[i]) {
+                                    ds.data = datasets[i].data;
+                                }
+                            });
+                            metricsChart.update('none');
+                            return;
+                        }
+                    } else {
+                        metricsChart.destroy();
+                        metricsChart = null;
                     }
-                    // Different service/window? Destroy and recreate
-                    metricsChart.destroy();
                 }
+                
+                // Read theme-aware colors from CSS variables
+                const gridColor = getComputedStyle(document.documentElement).getPropertyValue('--border-color').trim() || '#2a2d3a';
+                const textSecondary = getComputedStyle(document.documentElement).getPropertyValue('--text-secondary').trim() || '#94a3b8';
                 
                 // Create new chart
                 metricsChart = new Chart(ctx, {
@@ -1214,7 +1300,7 @@ function animateCounter(element, target, duration = 1000) {
                             legend: { 
                                 display: true,
                                 position: 'bottom',
-                                labels: { boxWidth: 12, padding: 10, color: '#94a3b8' }
+                                labels: { boxWidth: 12, padding: 10, color: textSecondary }
                             },
                             tooltip: {
                                 callbacks: {
@@ -1224,8 +1310,8 @@ function animateCounter(element, target, duration = 1000) {
                             }
                         },
                         scales: {
-                            x: { grid: { color: '#2a2d3a' } },
-                            y: { grid: { color: '#2a2d3a' }, beginAtZero: true }
+                            x: { grid: { color: gridColor } },
+                            y: { grid: { color: gridColor }, beginAtZero: true }
                         }
                     }
                 });
@@ -1256,48 +1342,105 @@ function animateCounter(element, target, duration = 1000) {
             
             const sources = pipeline.sources || { ddgs: {}, searxng: {}, commoncrawl: {}, theharvester: {} };
             
-            let html = '';
-            nodes.forEach((node, i) => {
-                const data = pipeline[node.key];
-                const status = data.status || 'stopped';
-                const queueLevel = data.queue > 50 ? 'high' : data.queue > 10 ? 'medium' : 'low';
-                
-                html += `<div class="pipeline-node ${status}" onclick="openServiceModal('${node.key}', '${node.label}')">
-                    <div class="pipeline-node-name">${node.label}</div>
-                    <div class="pipeline-node-divider"></div>
-                    <div class="pipeline-node-stats">
-                        <div>
-                            <div class="stat-label">Uptime</div>
-                            <div class="stat-value">${data.uptime || '--'}</div>
+            // Check if already rendered (7 children = 4 pipeline nodes + 3 connectors)
+            const isRendered = container.children.length === 7
+                && container.children[0].classList.contains('pipeline-node');
+            
+            if (isRendered) {
+                // In-place update — preserve DOM state (animations, expanded sub-nodes)
+                nodes.forEach((node, i) => {
+                    const child = container.children[i * 2];
+                    if (!child || !child.classList.contains('pipeline-node')) return;
+                    
+                    const data = pipeline[node.key];
+                    const status = data.status || 'stopped';
+                    const queueLevel = data.queue > 50 ? 'high' : data.queue > 10 ? 'medium' : 'low';
+                    
+                    child.className = 'pipeline-node ' + status;
+                    
+                    const statValues = child.querySelectorAll('.stat-value');
+                    if (statValues[0]) statValues[0].textContent = data.uptime || '--';
+                    if (statValues[1]) statValues[1].textContent = data.processed;
+                    
+                    const queueEl = child.querySelector('.pipeline-node-queue');
+                    if (queueEl) {
+                        queueEl.className = 'pipeline-node-queue ' + queueLevel;
+                        queueEl.textContent = data.queue + ' waiting';
+                    }
+                    
+                    // Update source statuses inside sub-nodes
+                    const subEl = child.querySelector('.sub-nodes');
+                    if (subEl) {
+                        const subs = subEl.children;
+                        const srcLabels = ['DDGS:', 'SearXNG:', 'CommonCrawl:', 'theHarvester:'];
+                        const srcKeys = ['ddgs', 'searxng', 'commoncrawl', 'theharvester'];
+                        for (let si = 0; si < subs.length && si < srcKeys.length; si++) {
+                            subs[si].innerHTML = '<span class="sub-label">' + srcLabels[si] + '</span> ' + (sources[srcKeys[si]]?.status || 'N/A');
+                        }
+                    }
+                    
+                    // Update connector after this node (except last)
+                    if (i < nodes.length - 1) {
+                        const conn = container.children[i * 2 + 1];
+                        if (conn && conn.classList.contains('pipeline-connector')) {
+                            const lineEl = conn.querySelector('.pipeline-line');
+                            if (lineEl) {
+                                const lineStatus = status === 'running' ? 'running' : 'stopped';
+                                lineEl.className = 'pipeline-line ' + lineStatus;
+                                const hasDots = !!lineEl.querySelector('.pipeline-line-dot');
+                                if (lineStatus === 'running' && !hasDots) {
+                                    lineEl.innerHTML = '<div class="pipeline-line-dot"></div><div class="pipeline-line-dot"></div>';
+                                } else if (lineStatus !== 'running' && hasDots) {
+                                    lineEl.innerHTML = '';
+                                }
+                            }
+                        }
+                    }
+                });
+            } else {
+                // First render — build full HTML
+                let html = '';
+                nodes.forEach((node, i) => {
+                    const data = pipeline[node.key];
+                    const status = data.status || 'stopped';
+                    const queueLevel = data.queue > 50 ? 'high' : data.queue > 10 ? 'medium' : 'low';
+                    
+                    html += `<div class="pipeline-node ${status}" onclick="openServiceModal('${node.key}', '${node.label}')">
+                        <div class="pipeline-node-name">${node.label}</div>
+                        <div class="pipeline-node-divider"></div>
+                        <div class="pipeline-node-stats">
+                            <div>
+                                <div class="stat-label">Uptime</div>
+                                <div class="stat-value">${data.uptime || '--'}</div>
+                            </div>
+                            <div>
+                                <div class="stat-label">Processed</div>
+                                <div class="stat-value">${data.processed}</div>
+                            </div>
                         </div>
-                        <div>
-                            <div class="stat-label">Processed</div>
-                            <div class="stat-value">${data.processed}</div>
+                        <div class="pipeline-node-queue ${queueLevel}">
+                            ${data.queue} waiting
                         </div>
-                    </div>
-                    <div class="pipeline-node-queue ${queueLevel}">
-                        ${data.queue} waiting
-                    </div>
-                    <div class="node-toggle" onclick="event.stopPropagation(); toggleSubNodes('${node.key}')">▼ Sources</div>
-                    <div class="sub-nodes" id="sub-${node.key}">
-                        <div class="sub-node"><span class="sub-label">DDGS:</span> ${sources.ddgs?.status || 'N/A'}</div>
-                        <div class="sub-node"><span class="sub-label">SearXNG:</span> ${sources.searxng?.status || 'N/A'}</div>
-                        <div class="sub-node"><span class="sub-label">CommonCrawl:</span> ${sources.commoncrawl?.status || 'N/A'}</div>
-                        <div class="sub-node"><span class="sub-label">theHarvester:</span> ${sources.theharvester?.status || 'N/A'}</div>
-                    </div>
-                </div>`;
-                
-                if (i < nodes.length - 1) {
-                    const lineStatus = status === 'running' ? 'running' : 'stopped';
-                    html += `<div class="pipeline-connector">
-                        <div class="pipeline-line ${lineStatus}">
-                            ${lineStatus === 'running' ? '<div class="pipeline-line-dot"></div><div class="pipeline-line-dot"></div>' : ''}
+                        <div class="node-toggle" onclick="event.stopPropagation(); toggleSubNodes('${node.key}')">▼ Sources</div>
+                        <div class="sub-nodes" id="sub-${node.key}">
+                            <div class="sub-node"><span class="sub-label">DDGS:</span> ${sources.ddgs?.status || 'N/A'}</div>
+                            <div class="sub-node"><span class="sub-label">SearXNG:</span> ${sources.searxng?.status || 'N/A'}</div>
+                            <div class="sub-node"><span class="sub-label">CommonCrawl:</span> ${sources.commoncrawl?.status || 'N/A'}</div>
+                            <div class="sub-node"><span class="sub-label">theHarvester:</span> ${sources.theharvester?.status || 'N/A'}</div>
                         </div>
                     </div>`;
-                }
-            });
-            
-            container.innerHTML = html;
+                    
+                    if (i < nodes.length - 1) {
+                        const lineStatus = status === 'running' ? 'running' : 'stopped';
+                        html += `<div class="pipeline-connector">
+                            <div class="pipeline-line ${lineStatus}">
+                                ${lineStatus === 'running' ? '<div class="pipeline-line-dot"></div><div class="pipeline-line-dot"></div>' : ''}
+                            </div>
+                        </div>`;
+                    }
+                });
+                container.innerHTML = html;
+            }
         }
         
         function toggleSubNodes(nodeKey) {
@@ -1863,6 +2006,11 @@ function animateCounter(element, target, duration = 1000) {
                 clearInterval(serviceCounterInterval);
                 serviceCounterInterval = null;
             }
+            if (id === 'mode-confirm-modal' && pendingMode) {
+                const input = document.getElementById('mode-toggle-input');
+                input.checked = pendingMode !== 'systemd';
+                pendingMode = null;
+            }
         }
 
         let exportPreviewTimeout = null;
@@ -2006,9 +2154,12 @@ function animateCounter(element, target, duration = 1000) {
         }
         let metricsIntervalObj = null;
         
-        // Auto-refresh intervals - consolidated to minimize API calls
-        // loadDashboard() already fetches both stats AND job queue in one call
-        setInterval(() => loadDashboard(), dashboardInterval);
+        // Auto-refresh intervals - only start dashboard polling if WebSocket is not available
+        // WebSocket connect/disconnect handlers manage this interval
+        if (wsMode !== 'websocket') {
+            dashboardIntervalId = setInterval(() => loadDashboard(), dashboardInterval);
+        }
+        // Keep metrics polling regardless
         
         // Metrics polling - slower, only 5m window gets fast updates
         setInterval(() => loadMetrics(), metricsIntervalValue);
@@ -2053,7 +2204,6 @@ function animateCounter(element, target, duration = 1000) {
                 const isSystemd = data.mode === 'systemd';
                 document.getElementById('mode-toggle-input').checked = isSystemd;
                 updateModeBadge(data.mode);
-                updateModeLabels(data.mode);
             } catch (e) {
                 console.error('Failed to load pipeline mode:', e);
             }
@@ -2141,6 +2291,7 @@ function animateCounter(element, target, duration = 1000) {
             initWebSocket();
             loadDashboard();
             loadPipelineMode();
+            loadMetrics();
         });
     </script>
 </body>

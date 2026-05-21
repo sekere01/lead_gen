@@ -3,11 +3,12 @@ Dashboard Endpoints
 Provides aggregated metrics and pipeline status for the dashboard.
 """
 import logging
+import time
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from typing import List, Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, text
 
 from database import get_db, Company, Contact, DiscoveryJob
 from services.process_manager import process_manager
@@ -68,11 +69,22 @@ class DashboardStats(BaseModel):
     job_queue: List[JobQueueItem]
     services: dict
     pipeline: dict
+    db_status: dict
 
 
 @router.get("/stats", response_model=DashboardStats)
 def get_dashboard_stats(db: Session = Depends(get_db)):
     """Get dashboard statistics."""
+    # Database connectivity check
+    try:
+        start = time.time()
+        db.execute(text("SELECT 1"))
+        latency = int((time.time() - start) * 1000)
+        db_status = {"status": "connected", "latency_ms": latency}
+    except Exception as e:
+        db_status = {"status": "disconnected", "error": str(e)}
+        logger.error(f"Database health check failed: {e}")
+
     # Company counts by status
     company_status_counts = db.query(
         Company.status,
@@ -192,7 +204,8 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
         metrics=metrics,
         job_queue=job_queue,
         services=services_status,
-        pipeline=pipeline
+        pipeline=pipeline,
+        db_status=db_status
     )
 
 
@@ -382,10 +395,11 @@ async def dashboard_websocket(websocket: WebSocket):
     """WebSocket endpoint for real-time dashboard updates."""
     logger.info("WebSocket connection request received")
     await manager.connect(websocket)
+    db = next(get_db())
+    loop = asyncio.get_running_loop()
     try:
         # Send initial dashboard data
-        db = next(get_db())
-        initial_data = get_dashboard_stats(db)
+        initial_data = await loop.run_in_executor(None, get_dashboard_stats, db)
         if hasattr(initial_data, 'model_dump'):
             initial_dict = initial_data.model_dump()
         else:
@@ -401,8 +415,7 @@ async def dashboard_websocket(websocket: WebSocket):
             try:
                 msg = json.loads(data)
                 if msg.get("type") == "request_update":
-                    db = next(get_db())
-                    fresh_data = get_dashboard_stats(db)
+                    fresh_data = await loop.run_in_executor(None, get_dashboard_stats, db)
                     if hasattr(fresh_data, 'model_dump'):
                         fresh_dict = fresh_data.model_dump()
                     else:
@@ -420,6 +433,8 @@ async def dashboard_websocket(websocket: WebSocket):
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
         manager.disconnect(websocket)
+    finally:
+        db.close()
 
 
 def broadcast_update(update_type: str, data: dict):

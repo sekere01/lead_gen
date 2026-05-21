@@ -62,3 +62,6 @@ htmlcov/
 .claude/
 .remember/
 .kilo/
+
+# Project Memory
+*.memory.md

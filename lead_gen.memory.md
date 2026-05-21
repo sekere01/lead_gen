@@ -482,3 +482,28 @@ WebSocket kept disconnecting and reconnecting in a loop.
 
 ### Important Note
 When running uvicorn, do NOT use `reload=True` in production as it spawns multiple worker processes that can cause database connection pool exhaustion. Use `reload=False` or omit the flag.
+
+## Control Toggle Fix (2026-05-21)
+
+### Problem 1: HTTP Error on Mode Switch
+**Error:** `{"detail":"[Errno 2] No such file or directory: 'sudo'"}`
+
+**Root cause:** `process_manager.py:set_mode()` calls `subprocess.run(['sudo', 'systemctl', ...])` but `sudo` may not be available in the API's PATH. The error caused a 500 response.
+
+**Fix:** Wrapped systemd commands in try/except FileNotFoundError. Mode file is always saved first, then systemd commands are attempted. If sudo is missing, returns success with a warning field.
+
+### Problem 2: Toggle Checkbox Didn't Revert on Failure
+**Root cause:** JavaScript `confirmModeSwitch()` caught the error but left the checkbox in the new (failed) position.
+
+**Fix:** Save `previousMode` before attempting switch. On error, revert checkbox: `input.checked = previousMode === 'systemd'`.
+
+### Problem 3: Toggle Labels Not Visible
+**Root cause:** CSS used sibling selectors (`~`) with incorrect HTML structure. Labels were nested inside `<label>` element but CSS expected them as siblings of `<input>`.
+
+**Fix:** Simplified CSS - labels always visible below toggle, color changes based on state. Removed broken opacity-based hover effect.
+
+### Verification
+- `POST /api/v1/services/mode` returns `{"mode":"api"}` or `{"mode":"systemd"}` successfully
+- When sudo unavailable: returns `{"mode":"api","warning":"Mode saved, but sudo not available..."}`
+- Dashboard toggle checkbox reverts correctly on failure
+- Toggle labels display correctly

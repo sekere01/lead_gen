@@ -1,14 +1,64 @@
+# Environment & Secrets
 .env
+.env.*
+!.env.example
+
+# Python
 */venv/
 .venv/
 __pycache__/
 *.pyc
 *.pyo
+*.egg-info/
+.mypy_cache/
+.tox/
+
+# Build & Distribution
+dist/
+build/
+
+# IDE & Editors
+.idea/
+.vscode/
+.vs/
+*.swp
+*.swo
+*.swn
+*~
+
+# OS files
 .DS_Store
-.claude/
-.remember/
-graphify-out/
-.kilo/
+Thumbs.db
+desktop.ini
+
+# Logs
 *.log
 logs/
 /var/log/
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Cache & Runtime
+*.lock
+*.pid
+*.out
+*.sock
+*.tmp
+*.bak
+celerybeat-schedule*
+graphify-out/
+04_api/cache/
+*/cache/search_cache.json
+
+# Test Artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+
+# AI Assistants
+.claude/
+.remember/
+.kilo/

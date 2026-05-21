@@ -80,7 +80,7 @@ class ProcessManager:
             try:
                 # Method 1: Match by script name
                 result = subprocess.run(
-                    ['pgrep', '-f', config['script']],
+                    ['/usr/bin/pgrep', '-f', config['script']],
                     capture_output=True,
                     text=True
                 )
@@ -93,7 +93,7 @@ class ProcessManager:
                 
                 # Method 2: Match by service_dir/main.py pattern
                 result = subprocess.run(
-                    ['pgrep', '-f', f"{config['service_dir']}/venv/bin/python main.py"],
+                    ['/usr/bin/pgrep', '-f', f"{config['service_dir']}/venv/bin/python main.py"],
                     capture_output=True,
                     text=True
                 )
@@ -211,7 +211,7 @@ class ProcessManager:
             # Kill any existing orphan process by script name
             try:
                 subprocess.run(
-                    ['pkill', '-9', '-f', config['script']],
+                    ['/usr/bin/pkill', '-9', '-f', config['script']],
                     capture_output=True
                 )
             except Exception:
@@ -220,7 +220,7 @@ class ProcessManager:
             # Also kill by main.py pattern
             try:
                 subprocess.run(
-                    ['pkill', '-9', '-f', f"{config['service_dir']}/venv/bin/python main.py"],
+                    ['/usr/bin/pkill', '-9', '-f', f"{config['service_dir']}/venv/bin/python main.py"],
                     capture_output=True
                 )
             except Exception:
@@ -234,6 +234,13 @@ class ProcessManager:
             # Log file path
             log_file = f'/tmp/{service_name}.out'
             
+            # Build environment with proper PATH and PYTHONPATH
+            env = os.environ.copy()
+            env['PYTHONPATH'] = self.project_dir
+            # Ensure PATH includes standard directories
+            if 'PATH' not in env or not env['PATH']:
+                env['PATH'] = '/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin'
+            
             # Start the service from the service directory (correct cwd)
             with open(log_file, 'a') as log_out:
                 process = subprocess.Popen(
@@ -241,7 +248,8 @@ class ProcessManager:
                     cwd=service_dir,
                     stdout=log_out,
                     stderr=subprocess.STDOUT,
-                    start_new_session=True
+                    start_new_session=True,
+                    env=env
                 )
             
             # Store process reference

@@ -521,3 +521,29 @@ sudo cp /home/kali/lead_gen/sudoers_leadgen /etc/sudoers.d/leadgen && sudo chmod
 sudo -l | grep leadgen
 ```
 Should show: `NOPASSWD: /bin/systemctl start leadgen-*, /bin/systemctl stop leadgen-*, /bin/systemctl restart leadgen-*, /bin/systemctl enable leadgen-*, /bin/systemctl disable leadgen-*, /bin/systemctl daemon-reload`
+
+## Manual Mode Services Not Starting Fix (2026-05-21)
+
+### Problem
+Services showed as "started" via API but immediately died. Dashboard showed all services as "stopped" in manual mode.
+
+### Root Cause
+`subprocess.Popen()` in `process_manager.py` created child processes with a minimal environment:
+- `PATH` was empty or incomplete → `dirname`, `sleep`, `cat`, `rm` commands not found
+- `PYTHONPATH` was not set → `shared_models` module not importable
+- `pgrep` and `pkill` used without absolute paths → not found in minimal PATH
+
+### Fix
+1. Pass `env=os.environ.copy()` to `subprocess.Popen()` in `start_service()`
+2. Explicitly set `env['PYTHONPATH'] = self.project_dir`
+3. Ensure `env['PATH']` includes standard directories
+4. Use absolute paths: `/usr/bin/pgrep`, `/usr/bin/pkill`
+
+### Verification
+All 4 services start and stay running in manual mode:
+```
+discovery:    running (uptime: 21s)
+browsing:     running (uptime: 7s)
+enrichment:   running (uptime: 5s)
+verification: running (uptime: 4s)
+```

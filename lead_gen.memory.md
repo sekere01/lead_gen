@@ -597,3 +597,34 @@ verification: running (uptime: 4s)
   - `"Email verify: test@example.com -> valid_verified"`
   - `"Preview 386 emails (verified=True, limit=5, search=None)"`
 - `discovery.log` has INFO entries (previously only WARNING+)
+
+## Service Metrics Debug & Fix (2026-05-21)
+
+### Problems Found
+1. **Only discovery wrote metrics** — browsing, enrichment, verification had no `write_metrics()` functions
+2. **Metric name mismatch** — discovery wrote `companies_found` but frontend expected `companies_total`
+3. **Timezone bug** — `GET /dashboard/metrics` used `datetime.now()` (local) for cutoff instead of UTC, causing wrong data window
+4. **Duplicate code in browsing** — `run_browser()` had duplicate company processing blocks after metrics write
+5. **Metrics skipped on idle** — enrichment and verification used `continue` in idle branches, skipping metrics writes
+6. **Missing httpx** — verification service venv lacked httpx dependency
+7. **PATH issue** — process_manager only set PATH when empty, causing `dirname/sleep/cat not found` errors
+
+### Fixes Applied
+| File | Change |
+|---|---|
+| `01_discovery/main.py` | Renamed `companies_found`→`companies_total`, added `jobs_processing`, `jobs_completed`, `jobs_failed` |
+| `01b_browsing/main.py` | Added `write_metrics()` (pages_browsed, domain_browsed, domain_failed, enrich_requeued), fixed duplicate code |
+| `02_enrichment/main.py` | Added `write_metrics()` (emails_collected, domains_processed, enrich_requeued, domain_enriching), removed idle skip |
+| `03_verification/main.py` | Added `write_metrics()` (contacts_total, verified_count, invalid_count, pending_count, needs_retry), removed idle skip |
+| `04_api/api/v1/endpoints/dashboard.py` | Fixed timezone: `datetime.now()` → `datetime.now(timezone.utc)` |
+| `dashboard.html` | Added `jobs_processing`, `domain_enriching`, `needs_retry` to metricColors |
+| `process_manager.py` | Always set PATH (prepend standard dirs to existing PATH) |
+| `03_verification/venv` | Installed httpx |
+
+### Verified
+All 4 services writing metrics every 60 seconds:
+- Discovery: companies_total, jobs_pending, jobs_processing, jobs_completed, jobs_failed
+- Browsing: pages_browsed, domain_browsed, domain_failed, enrich_requeued
+- Enrichment: emails_collected, domains_processed, enrich_requeued, domain_enriching
+- Verification: contacts_total, verified_count, invalid_count, pending_count, needs_retry
+- "All services" view works with service-prefixed metric keys

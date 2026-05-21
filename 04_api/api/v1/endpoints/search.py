@@ -1,12 +1,14 @@
 """
 Search API endpoints.
 """
+import logging
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from database import get_db
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/search", tags=["Search"])
 
 
@@ -40,4 +42,5 @@ def search_domains(request: DomainSearchRequest, db=None):
             metadata=metadata
         )
     except Exception as e:
+        logger.error(f"Search failed for '{request.keyword}' ({request.region}): {e}")
         raise HTTPException(status_code=500, detail=str(e))

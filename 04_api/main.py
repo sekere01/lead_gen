@@ -32,9 +32,7 @@ async def lifespan(app: FastAPI):
     global ws_heartbeat_task
     
     # Startup
-    print("=" * 50)
-    print("Starting Lead Generation API...")
-    print("=" * 50)
+    logger.info("Starting Lead Generation API...")
     
     init_db()
     
@@ -44,9 +42,9 @@ async def lifespan(app: FastAPI):
         ws_heartbeat_task = asyncio.get_running_loop().create_task(
             ws_manager.start_heartbeat()
         )
-        print("WebSocket heartbeat started")
+        logger.info("WebSocket heartbeat started")
     except Exception as e:
-        print(f"WebSocket heartbeat failed to start: {e}")
+        logger.error(f"WebSocket heartbeat failed to start: {e}")
     
     yield
     
@@ -57,7 +55,7 @@ async def lifespan(app: FastAPI):
             await ws_heartbeat_task
         except asyncio.CancelledError:
             pass
-        print("WebSocket heartbeat stopped")
+        logger.info("WebSocket heartbeat stopped")
 
 
 app = FastAPI(
@@ -79,13 +77,16 @@ file_handler = logging.handlers.TimedRotatingFileHandler(
     backupCount=7,
     encoding="utf-8"
 )
-file_handler.setLevel(logging.WARNING)
+file_handler.setLevel(logging.INFO)
 file_handler.setFormatter(logging.Formatter(
     '%(asctime)s | %(levelname)s | api | %(message)s'
 ))
 
 logging.getLogger("uvicorn.error").addHandler(file_handler)
 logging.getLogger("uvicorn.access").addHandler(file_handler)
+logger = logging.getLogger("api")
+logging.getLogger().setLevel(logging.INFO)
+logging.getLogger().addHandler(file_handler)
 
 app.add_middleware(
     CORSMiddleware,
@@ -126,10 +127,7 @@ def dashboard():
 if __name__ == "__main__":
     import uvicorn
     
-    print("=" * 50)
-    print("Starting Lead Generation API...")
-    print("=" * 50)
-    
+    logger.info("Starting Lead Generation API...")
     init_db()
     
     uvicorn.run(

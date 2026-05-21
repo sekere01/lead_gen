@@ -1,6 +1,7 @@
 """
 Export API endpoints for contacts and metrics.
 """
+import logging
 from typing import Optional, Union
 from datetime import datetime
 from fastapi import APIRouter, Depends, Query
@@ -9,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from database import get_db, Contact, Company, DiscoveryJob
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/export", tags=["Export"])
 
 
@@ -69,6 +71,7 @@ def export_emails(
             return f"{base}_{filter_part}_{today}.{ext}"
         return f"{base}_{today}.{ext}"
     
+    logger.info(f"Exporting {len(email_list)} emails (format={format}, verified={is_verified}, limit={limit}, search={search})")
     if format == "csv":
         content = "email\n" + "\n".join(email_list)
         filename = make_filename("emails", "csv")
@@ -122,6 +125,7 @@ def preview_emails(
     emails = base_query.distinct().limit(limit).all()
     email_list = [e[0] for e in emails]
     
+    logger.info(f"Preview {total_count} emails (verified={is_verified}, limit={limit}, search={search})")
     return JSONResponse({"count": total_count, "emails": email_list})
 
 

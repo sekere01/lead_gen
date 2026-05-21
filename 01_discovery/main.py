@@ -37,7 +37,7 @@ file_handler = logging.handlers.TimedRotatingFileHandler(
     backupCount=7,
     encoding="utf-8"
 )
-file_handler.setLevel(logging.WARNING)
+file_handler.setLevel(logging.INFO)
 file_handler.setFormatter(formatter)
 
 logger = logging.getLogger("discoverer")

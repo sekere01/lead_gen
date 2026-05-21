@@ -1,11 +1,13 @@
 """
 Verification API endpoints.
 """
+import logging
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from database import get_db
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/verification", tags=["Verification"])
 
 
@@ -30,6 +32,7 @@ def verify_single_email(request: EmailVerifyRequest, db=None):
         
         result = verify_email_fast(request.email)
         
+        logger.info(f"Email verify: {request.email} -> {result.get('verification_status')}")
         return EmailVerifyResponse(
             email=request.email,
             is_verified=result['is_verified'],
@@ -39,4 +42,5 @@ def verify_single_email(request: EmailVerifyRequest, db=None):
             has_mx_records=result['has_mx_records']
         )
     except Exception as e:
+        logger.error(f"Email verify failed for {request.email}: {e}")
         raise HTTPException(status_code=500, detail=str(e))

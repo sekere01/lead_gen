@@ -1,6 +1,7 @@
 """
 Job Stats Service - Manages pre-computed job counts for fast dashboard queries.
 """
+import logging
 from sqlalchemy.orm import Session
 from sqlalchemy import text, func
 from typing import Dict, Optional

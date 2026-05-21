@@ -1,6 +1,7 @@
 """
 Contacts API endpoints.
 """
+import logging
 from typing import Optional
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -8,6 +9,8 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from database import get_db, Contact
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/contacts", tags=["Contacts"])
 
@@ -46,6 +49,7 @@ def list_contacts(
             query = query.filter(Contact.company_id == company_id)
         return query.order_by(Contact.created_at.desc()).limit(limit).all()
     except Exception as e:
+        logger.error(f"Error listing contacts: {e}")
         return []
 
 
@@ -54,5 +58,7 @@ def get_contact(contact_id: int, db: Session = Depends(get_db)):
     """Get a specific contact."""
     contact = db.query(Contact).filter(Contact.id == contact_id).first()
     if not contact:
+        logger.warning(f"Contact {contact_id} not found")
         raise HTTPException(status_code=404, detail="Contact not found")
+    logger.debug(f"Contact {contact_id}: {contact.email}")
     return contact

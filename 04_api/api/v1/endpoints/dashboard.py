@@ -2,6 +2,7 @@
 Dashboard Endpoints
 Provides aggregated metrics and pipeline status for the dashboard.
 """
+import logging
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from typing import List, Optional
@@ -11,6 +12,7 @@ from sqlalchemy import func
 from database import get_db, Company, Contact, DiscoveryJob
 from services.process_manager import process_manager
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 
 
@@ -385,7 +387,7 @@ manager = ConnectionManager()
 @router.websocket("/ws")
 async def dashboard_websocket(websocket: WebSocket):
     """WebSocket endpoint for real-time dashboard updates."""
-    print(f"WebSocket connection request received")
+    logger.info("WebSocket connection request received")
     await manager.connect(websocket)
     try:
         # Send initial dashboard data
@@ -423,7 +425,7 @@ async def dashboard_websocket(websocket: WebSocket):
     except WebSocketDisconnect:
         manager.disconnect(websocket)
     except Exception as e:
-        print(f"WebSocket error: {e}")
+        logger.error(f"WebSocket error: {e}")
         manager.disconnect(websocket)
 
 

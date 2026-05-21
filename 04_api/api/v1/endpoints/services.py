@@ -2,12 +2,15 @@
 Service Control Endpoints
 Start, stop, restart, and check status of pipeline services.
 """
+import logging
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from typing import List, Optional
 
 from database import get_db
 from services.process_manager import process_manager
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/services", tags=["Services"])
 
@@ -61,25 +64,44 @@ def get_services_status():
 def get_health():
     """Get overall pipeline health."""
     health = process_manager.get_health_status()
+    logger.info(f"Health check: {health.get('health')} ({health.get('services_running')}/{health.get('services_total')} running)")
     return HealthResponse(**health)
 
 
 @router.post("/{service_name}/start", response_model=ServiceActionResponse)
 def start_service(service_name: str):
     """Start a pipeline service."""
-    return process_manager.start_service(service_name)
+    logger.info(f"Start requested: {service_name}")
+    result = process_manager.start_service(service_name)
+    if result.get("success"):
+        logger.info(f"Start succeeded: {service_name}")
+    else:
+        logger.error(f"Start failed: {service_name} - {result.get("error")}")
+    return result
 
 
 @router.post("/{service_name}/stop", response_model=ServiceActionResponse)
 def stop_service(service_name: str):
     """Stop a pipeline service."""
-    return process_manager.stop_service(service_name)
+    logger.info(f"Stop requested: {service_name}")
+    result = process_manager.stop_service(service_name)
+    if result.get("success"):
+        logger.info(f"Stop succeeded: {service_name}")
+    else:
+        logger.error(f"Stop failed: {service_name} - {result.get("error")}")
+    return result
 
 
 @router.post("/{service_name}/restart", response_model=ServiceActionResponse)
 def restart_service(service_name: str):
     """Restart a pipeline service."""
-    return process_manager.restart_service(service_name)
+    logger.info(f"Restart requested: {service_name}")
+    result = process_manager.restart_service(service_name)
+    if result.get("success"):
+        logger.info(f"Restart succeeded: {service_name}")
+    else:
+        logger.error(f"Restart failed: {service_name} - {result.get("error")}")
+    return result
 
 
 @router.get("/logs")
@@ -114,6 +136,7 @@ def get_logs(limit: int = 100):
     all_logs = list(reversed(all_logs))[-limit:]
     all_logs = list(reversed(all_logs))
     
+    logger.debug(f"Logs requested: limit={limit}, returned={len(all_logs)}")
     return {"logs": all_logs, "count": len(all_logs)}
 
 
@@ -125,8 +148,10 @@ def get_service_logs(service_name: str, limit: int = 200):
         with open(log_file, "r") as f:
             lines = f.readlines()
         logs = [line.strip() for line in lines[-limit:]]
+        logger.debug(f"Service logs requested: {service_name}, limit={limit}, returned={len(logs)}")
         return {"logs": logs, "count": len(logs), "service": service_name}
     except FileNotFoundError:
+        logger.debug(f"Service logs not found: {service_name}")
         return {"logs": [f"No logs yet for {service_name}"], "count": 0, "service": service_name}
 
 
@@ -134,20 +159,26 @@ def get_service_logs(service_name: str, limit: int = 200):
 def refresh_services():
     """Refresh service status cache."""
     process_manager.refresh_status()
+    logger.debug("Service status refreshed")
     return {"success": True}
 
 
 @router.get("/mode", response_model=ModeResponse)
 def get_mode():
     """Get current control mode: 'api' (manual) or 'systemd' (auto)."""
-    return {"mode": process_manager.get_mode()}
+    mode = process_manager.get_mode()
+    logger.debug(f"Mode requested: {mode}")
+    return {"mode": mode}
 
 
 @router.post("/mode", response_model=ModeResponse)
 def set_mode(request: ModeRequest):
     """Set control mode and apply changes."""
+    logger.info(f"Mode change requested: {request.mode}")
     result = process_manager.set_mode(request.mode)
     if result.get('success'):
-        return {"mode": result['mode']}
+        logger.info(f"Mode changed to: {request.mode}")
+        return {"mode": result["mode"]}
     from fastapi import HTTPException
-    raise HTTPException(status_code=400, detail=result.get('error', 'Failed to set mode'))
+    logger.error(f"Mode change failed: {result.get('error')}")
+    raise HTTPException(status_code=400, detail=result.get("error", "Failed to set mode"))

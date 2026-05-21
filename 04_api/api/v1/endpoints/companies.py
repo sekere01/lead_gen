@@ -1,6 +1,7 @@
 """
 Companies API endpoints.
 """
+import logging
 from typing import List, Optional
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -8,6 +9,8 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from database import get_db, Company
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/companies", tags=["Companies"])
 
@@ -39,6 +42,7 @@ def list_companies(
             query = query.filter(Company.status == status)
         return query.order_by(Company.created_at.desc()).limit(limit).all()
     except Exception as e:
+        logger.error(f"Error listing companies: {e}")
         return []
 
 
@@ -47,5 +51,7 @@ def get_company(company_id: int, db: Session = Depends(get_db)):
     """Get a specific company."""
     company = db.query(Company).filter(Company.id == company_id).first()
     if not company:
+        logger.warning(f"Company {company_id} not found")
         raise HTTPException(status_code=404, detail="Company not found")
+    logger.debug(f"Company {company_id}: {company.domain}")
     return company

@@ -166,6 +166,7 @@ class ProcessManager:
     
     def start_service(self, service_name: str) -> Dict:
         """Start a service with atomic lock to prevent duplicates."""
+        logger.info(f"Starting service: {service_name}")
         if service_name not in SERVICES:
             return {'success': False, 'error': f'Unknown service: {service_name}'}
         
@@ -265,9 +266,11 @@ class ProcessManager:
             except:
                 pass
             
+            logger.info(f"Service {service_name} started (PID: {process.pid})")
             return {'success': True, 'message': f'Started {service_name}', 'log_file': log_file}
             
         except Exception as e:
+            logger.error(f"Failed to start {service_name}: {e}")
             # Release lock on failure
             if os.path.exists(lock_file):
                 try:
@@ -278,6 +281,7 @@ class ProcessManager:
     
     def stop_service(self, service_name: str) -> Dict:
         """Stop a service."""
+        logger.info(f"Stopping service: {service_name}")
         if service_name not in SERVICES:
             return {'success': False, 'error': f'Unknown service: {service_name}'}
         
@@ -298,12 +302,15 @@ class ProcessManager:
             # Remove start timestamp
             if service_name in service_start_times:
                 del service_start_times[service_name]
+            logger.info(f"Service {service_name} stopped successfully")
             return {'success': True, 'message': f'Stopped {service_name}'}
         except Exception as e:
+            logger.error(f"Failed to stop {service_name}: {e}")
             return {'success': False, 'error': str(e)}
     
     def restart_service(self, service_name: str) -> Dict:
         """Restart a service."""
+        logger.info(f"Restarting service: {service_name}")
         result = self.stop_service(service_name)
         if not result.get('success'):
             return result
@@ -312,6 +319,7 @@ class ProcessManager:
     
     def get_health_status(self) -> Dict:
         """Get overall pipeline health."""
+        logger.debug("Health status requested")
         services = self.get_all_services_status()
         running = sum(1 for s in services if s.status == 'running')
         total = len(services)

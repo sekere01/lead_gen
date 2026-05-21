@@ -146,7 +146,7 @@
         
         /* Pipeline Control Toggle */
         .pipeline-control { display: flex; flex-direction: column; align-items: center; gap: 8px; max-width: 40px; overflow: hidden; }
-        .control-label { font-size: clamp(7px, 1.5vw, 10px); color: #64748b; text-transform: uppercase; letter-spacing: 1px; display: flex; align-items: center; gap: 4px; cursor: help; max-width: 40px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .control-label { font-size: clamp(6px, 1.2vw, 8px); color: #64748b; text-transform: uppercase; letter-spacing: 0.8px; display: flex; align-items: center; gap: 3px; cursor: help; max-width: 40px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .control-label .info-icon { width: 14px; height: 14px; border: 1px solid #64748b; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 9px; color: #64748b; }
         .control-label .info-icon:hover::after { content: 'Manual: You control when services run. Good for debugging.\A Auto: Services restart automatically if they crash. Good for production.'; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); background: #1e293b; color: #e2e8f0; padding: 8px 12px; border-radius: 6px; font-size: 11px; white-space: pre; width: 200px; text-align: left; z-index: 100; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
         
@@ -156,10 +156,11 @@
         .toggle-track::before { content: ''; position: absolute; height: 14px; width: 14px; left: 4px; bottom: 4px; background: linear-gradient(145deg, #60a5fa, #3b82f6); border-radius: 50%; transition: all 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55); box-shadow: 0 2px 4px rgba(0,0,0,0.3); }
         .mode-toggle input:checked + .toggle-track { background: #166534; box-shadow: 0 0 12px rgba(16,185,129,0.3); }
         .mode-toggle input:checked + .toggle-track::before { transform: translateX(18px); background: linear-gradient(145deg, #34d399, #10b981); }
-        .toggle-labels { display: flex; justify-content: space-between; width: 40px; margin-top: 4px; font-size: clamp(6px, 1.2vw, 8px); }
+        .toggle-labels { display: flex; justify-content: center; width: 40px; margin-top: 4px; font-size: clamp(5px, 1vw, 7px); }
         .toggle-labels .label-manual { color: #3b82f6; }
-        .toggle-labels .label-auto { color: #64748b; }
-        .mode-toggle input:checked ~ .toggle-labels .label-auto { color: #10b981; }
+        .toggle-labels .label-auto { color: #64748b; display: none; }
+        .toggle-labels .label-auto.active { display: inline; color: #10b981; }
+        .toggle-labels .label-manual.active { display: inline; }
         
         .mode-badge { font-size: clamp(7px, 1.3vw, 9px); padding: 2px 6px; border-radius: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; max-width: 40px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; }
         .mode-badge.api { background: rgba(59,130,246,0.2); color: #3b82f6; box-shadow: 0 0 8px rgba(59,130,246,0.2); }
@@ -2059,8 +2060,21 @@ function animateCounter(element, target, duration = 1000) {
                 const isSystemd = data.mode === 'systemd';
                 document.getElementById('mode-toggle-input').checked = isSystemd;
                 updateModeBadge(data.mode);
+                updateModeLabels(data.mode);
             } catch (e) {
                 console.error('Failed to load pipeline mode:', e);
+            }
+        }
+        
+        function updateModeLabels(mode) {
+            const manualLabel = document.querySelector('.toggle-labels .label-manual');
+            const autoLabel = document.querySelector('.toggle-labels .label-auto');
+            if (mode === 'systemd') {
+                manualLabel.classList.remove('active');
+                autoLabel.classList.add('active');
+            } else {
+                manualLabel.classList.add('active');
+                autoLabel.classList.remove('active');
             }
         }
         
@@ -2118,6 +2132,7 @@ function animateCounter(element, target, duration = 1000) {
                 
                 const data = await res.json();
                 updateModeBadge(data.mode);
+                updateModeLabels(data.mode);
                 input.checked = data.mode === 'systemd';
                 closeModal('mode-confirm-modal');
                 

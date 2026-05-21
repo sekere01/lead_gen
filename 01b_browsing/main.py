@@ -297,9 +297,7 @@ def run_browser():
                 Company.status.in_(['discovered', 'requeued']),
             ).order_by(Company.discovery_score.desc()).limit(50).all()
             
-            if not companies:
-                logger.debug("No companies to browse, waiting...")
-            else:
+            if companies:
                 company_ids = [c.id for c in companies]
                 logger.info(f"Found {len(company_ids)} companies to browse")
                 
@@ -315,28 +313,14 @@ def run_browser():
                             future.result()
                         except Exception as e:
                             logger.error(f"Unhandled error in thread for company {cid}: {e}")
+            else:
+                logger.debug("No companies to browse, waiting...")
             
             # Write metrics every 60 seconds
             metrics_counter += POLL_INTERVAL
             if metrics_counter >= 60:
                 write_metrics(db)
                 metrics_counter = 0
-            
-            company_ids = [c.id for c in companies]
-            logger.info(f"Found {len(company_ids)} companies to browse")
-            
-            with ThreadPoolExecutor(max_workers=BROWSING_WORKERS) as executor:
-                futures = {
-                    executor.submit(process_company, cid): cid
-                    for cid in company_ids
-                }
-                
-                for future in as_completed(futures):
-                    cid = futures[future]
-                    try:
-                        future.result()
-                    except Exception as e:
-                        logger.error(f"Unhandled error in thread for company {cid}: {e}")
             
             time.sleep(POLL_INTERVAL)
             

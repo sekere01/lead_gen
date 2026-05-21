@@ -160,45 +160,43 @@ def run_verifier():
                 Contact.verification_status == 'pending'
             ).limit(50).all()
             
-            if not contacts:
-                logger.debug("No contacts to verify, waiting...")
-                time.sleep(POLL_INTERVAL)
-                continue
-            
-            logger.info(f"Found {len(contacts)} contacts to verify")
-            
-            verification_updates = []
-            processed_companies = set()
-            
-            for contact in contacts:
-                success = verify_contact(contact, db)
+            if contacts:
+                logger.info(f"Found {len(contacts)} contacts to verify")
                 
-                if success and contact.company_id:
-                    processed_companies.add(contact.company_id)
-                    verification_updates.append({
-                        'id': contact.id,
-                        'is_verified': contact.is_verified,
-                        'verification_status': contact.verification_status
-                    })
-            
-            if verification_updates:
-                try:
-                    for update_data in verification_updates:
-                        stmt = update(Contact).where(
-                            Contact.id == update_data['id']
-                        ).values(
-                            is_verified=update_data['is_verified'],
-                            verification_status=update_data['verification_status']
-                        )
-                        db.execute(stmt)
-                    db.commit()
-                    logger.info(f"Batch update completed: {len(verification_updates)} contacts updated")
-                except Exception as e:
-                    logger.error(f"Batch update failed: {e}")
-                    db.rollback()
-            
-            for company_id in processed_companies:
-                check_company_verification(company_id, db)
+                verification_updates = []
+                processed_companies = set()
+                
+                for contact in contacts:
+                    success = verify_contact(contact, db)
+                    
+                    if success and contact.company_id:
+                        processed_companies.add(contact.company_id)
+                        verification_updates.append({
+                            'id': contact.id,
+                            'is_verified': contact.is_verified,
+                            'verification_status': contact.verification_status
+                        })
+                
+                if verification_updates:
+                    try:
+                        for update_data in verification_updates:
+                            stmt = update(Contact).where(
+                                Contact.id == update_data['id']
+                            ).values(
+                                is_verified=update_data['is_verified'],
+                                verification_status=update_data['verification_status']
+                            )
+                            db.execute(stmt)
+                        db.commit()
+                        logger.info(f"Batch update completed: {len(verification_updates)} contacts updated")
+                    except Exception as e:
+                        logger.error(f"Batch update failed: {e}")
+                        db.rollback()
+                
+                for company_id in processed_companies:
+                    check_company_verification(company_id, db)
+            else:
+                logger.debug("No contacts to verify, waiting...")
             
             # Write metrics every 60 seconds
             metrics_counter += POLL_INTERVAL

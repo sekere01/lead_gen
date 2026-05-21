@@ -622,23 +622,21 @@ def run_enricher():
                 Company.status.in_(['browsed', 'enrich_requeued']),
             ).order_by(Company.discovery_score.desc()).limit(10).all()
             
-            if not companies:
-                logger.debug("No companies to enrich, waiting...")
-                time.sleep(POLL_INTERVAL)
-                continue
-            
-            logger.info(f"Found {len(companies)} companies to enrich")
-            
-            with ThreadPoolExecutor(max_workers=MAX_CONCURRENT) as executor:
-                futures = {executor.submit(process_company, company): company for company in companies}
+            if companies:
+                logger.info(f"Found {len(companies)} companies to enrich")
                 
-                for future in as_completed(futures):
-                    company = futures[future]
-                    try:
-                        result = future.result()
-                        logger.info(f"Company {company.domain} processed: {result}")
-                    except Exception as e:
-                        logger.error(f"Error processing {company.domain}: {e}")
+                with ThreadPoolExecutor(max_workers=MAX_CONCURRENT) as executor:
+                    futures = {executor.submit(process_company, company): company for company in companies}
+                    
+                    for future in as_completed(futures):
+                        company = futures[future]
+                        try:
+                            result = future.result()
+                            logger.info(f"Company {company.domain} processed: {result}")
+                        except Exception as e:
+                            logger.error(f"Error processing {company.domain}: {e}")
+            else:
+                logger.debug("No companies to enrich, waiting...")
             
             # Write metrics every 60 seconds
             metrics_counter += POLL_INTERVAL

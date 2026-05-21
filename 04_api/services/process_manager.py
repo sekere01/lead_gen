@@ -238,9 +238,11 @@ class ProcessManager:
             # Build environment with proper PATH and PYTHONPATH
             env = os.environ.copy()
             env['PYTHONPATH'] = self.project_dir
-            # Ensure PATH includes standard directories
-            if 'PATH' not in env or not env['PATH']:
-                env['PATH'] = '/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin'
+            # Always ensure PATH includes standard directories (prepend if exists)
+            existing_path = env.get('PATH', '')
+            env['PATH'] = '/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin'
+            if existing_path:
+                env['PATH'] += ':' + existing_path
             
             # Start the service from the service directory (correct cwd)
             with open(log_file, 'a') as log_out:

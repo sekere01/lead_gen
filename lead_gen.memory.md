@@ -453,3 +453,32 @@ done
 
 ### Nginx Update Required (manual)
 Run: `sudo cp /home/kali/lead_gen/nginx_config_updated.conf /etc/nginx/sites-available/lead_gen && sudo systemctl reload nginx`
+
+## WebSocket Reconnection Fix (2026-05-21)
+
+### Problem
+WebSocket kept disconnecting and reconnecting in a loop.
+
+### Root Causes
+1. **Missing `import asyncio` in dashboard.py** - The file used `asyncio.wait_for()` and `asyncio.sleep()` but never imported asyncio, causing a `NameError` that crashed the WebSocket handler immediately after connection.
+
+2. **Double Heartbeat Conflict** - Two separate heartbeat mechanisms running simultaneously:
+   - `main.py` lifespan started `ws_heartbeat()` function that pinged every 30s
+   - `dashboard.py` endpoint handler had a 60s timeout that also sent pings
+   - Race conditions between the two caused connection drops.
+
+3. **`start_heartbeat()` Method Never Used** - The `ConnectionManager.start_heartbeat()` method was defined but never called. Instead, main.py created its own separate heartbeat function.
+
+### Fixes Applied
+1. **dashboard.py**: Added `import asyncio` to imports
+2. **dashboard.py**: Simplified WebSocket handler - removed the 60s timeout logic, now just waits for messages indefinitely. The heartbeat task handles keep-alive.
+3. **main.py**: Removed the standalone `ws_heartbeat()` function. Changed lifespan to call `manager.start_heartbeat()` instead (uses ConnectionManager's built-in method).
+
+### Verification
+- WebSocket connects successfully
+- Server sends ping after ~30s
+- Client responds with pong
+- Connection stays stable without reconnection loops
+
+### Important Note
+When running uvicorn, do NOT use `reload=True` in production as it spawns multiple worker processes that can cause database connection pool exhaustion. Use `reload=False` or omit the flag.

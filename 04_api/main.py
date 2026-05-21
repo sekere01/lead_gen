@@ -38,11 +38,11 @@ async def lifespan(app: FastAPI):
     
     init_db()
     
-    # Start WebSocket heartbeat
+    # Start WebSocket heartbeat using ConnectionManager's built-in method
     try:
         from api.v1.endpoints.dashboard import manager as ws_manager
         ws_heartbeat_task = asyncio.get_running_loop().create_task(
-            ws_heartbeat(ws_manager)
+            ws_manager.start_heartbeat()
         )
         print("WebSocket heartbeat started")
     except Exception as e:
@@ -58,18 +58,6 @@ async def lifespan(app: FastAPI):
         except asyncio.CancelledError:
             pass
         print("WebSocket heartbeat stopped")
-
-
-async def ws_heartbeat(manager):
-    """Send heartbeat pings to keep WebSocket connections alive."""
-    while True:
-        await asyncio.sleep(30)
-        if manager.active_connections:
-            for conn in manager.active_connections:
-                try:
-                    await conn.send_text('{"type":"ping"}')
-                except Exception:
-                    pass
 
 
 app = FastAPI(

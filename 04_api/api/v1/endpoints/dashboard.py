@@ -340,6 +340,7 @@ def get_job_companies(job_id: int, limit: int = 10, db: Session = Depends(get_db
 from fastapi import WebSocket, WebSocketDisconnect
 from typing import List
 import json
+import asyncio
 
 class ConnectionManager:
     """Manage WebSocket connections for real-time dashboard updates."""
@@ -399,37 +400,26 @@ async def dashboard_websocket(websocket: WebSocket):
             "data": initial_dict
         }))
         
-        # Keep connection alive and handle incoming messages with 60s timeout
+        # Handle incoming messages
         while True:
+            data = await websocket.receive_text()
             try:
-                data = await asyncio.wait_for(
-                    websocket.receive_text(),
-                    timeout=60
-                )
-                # Handle incoming messages
-                try:
-                    msg = json.loads(data)
-                    if msg.get("type") == "request_update":
-                        # Manual refresh request
-                        db = next(get_db())
-                        fresh_data = get_dashboard_stats(db)
-                        if hasattr(fresh_data, 'model_dump'):
-                            fresh_dict = fresh_data.model_dump()
-                        else:
-                            fresh_dict = dict(fresh_data)
-                        await websocket.send_text(json.dumps({
-                            "type": "update",
-                            "data": fresh_dict
-                        }))
-                    elif msg.get("type") == "pong":
-                        pass  # Client responded to ping
-                except json.JSONDecodeError:
+                msg = json.loads(data)
+                if msg.get("type") == "request_update":
+                    db = next(get_db())
+                    fresh_data = get_dashboard_stats(db)
+                    if hasattr(fresh_data, 'model_dump'):
+                        fresh_dict = fresh_data.model_dump()
+                    else:
+                        fresh_dict = dict(fresh_data)
+                    await websocket.send_text(json.dumps({
+                        "type": "update",
+                        "data": fresh_dict
+                    }))
+                elif msg.get("type") == "pong":
                     pass
-                # Echo back for ping/pong
-                await websocket.send_text(json.dumps({"type": "pong"}))
-            except asyncio.TimeoutError:
-                # Client hasn't sent anything in 60s, send a ping to keep alive
-                await websocket.send_text(json.dumps({"type": "ping"}))
+            except json.JSONDecodeError:
+                pass
     except WebSocketDisconnect:
         manager.disconnect(websocket)
     except Exception as e:

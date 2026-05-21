@@ -145,8 +145,8 @@
         .pipeline-map { display: flex; align-items: center; justify-content: center; gap: 0; }
         
         /* Pipeline Control Toggle */
-        .pipeline-control { display: flex; flex-direction: column; align-items: center; gap: 8px; max-width: 45px; overflow: hidden; }
-        .control-label { font-size: clamp(6px, 1.2vw, 8px); color: #64748b; text-transform: uppercase; letter-spacing: 0.8px; display: flex; align-items: center; gap: 3px; cursor: help; max-width: 45px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .pipeline-control { display: flex; flex-direction: column; align-items: center; gap: 8px; max-width: 50px; overflow: hidden; }
+        .control-label { font-size: clamp(6px, 1.2vw, 8px); color: #64748b; text-transform: uppercase; letter-spacing: 0.8px; display: flex; align-items: center; gap: 3px; cursor: help; max-width: 50px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .control-label .info-icon { width: 14px; height: 14px; border: 1px solid #64748b; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 9px; color: #64748b; }
         .control-label .info-icon:hover::after { content: 'Manual: You control when services run. Good for debugging.\A Auto: Services restart automatically if they crash. Good for production.'; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); background: #1e293b; color: #e2e8f0; padding: 8px 12px; border-radius: 6px; font-size: 11px; white-space: pre; width: 200px; text-align: left; z-index: 100; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
         
@@ -157,7 +157,7 @@
         .mode-toggle input:checked + .toggle-track { background: #166534; box-shadow: 0 0 12px rgba(16,185,129,0.3); }
         .mode-toggle input:checked + .toggle-track::before { transform: translateX(18px); background: linear-gradient(145deg, #34d399, #10b981); }
 
-        .mode-badge { font-size: clamp(6px, 1.1vw, 8px); padding: 1px 5px; border-radius: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; max-width: 45px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; }
+        .mode-badge { font-size: clamp(6px, 1.1vw, 8px); padding: 1px 5px; border-radius: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; max-width: 50px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; }
         .mode-badge.api { background: rgba(59,130,246,0.2); color: #3b82f6; box-shadow: 0 0 8px rgba(59,130,246,0.2); }
         .mode-badge.systemd { background: rgba(16,185,129,0.2); color: #10b981; box-shadow: 0 0 8px rgba(16,185,129,0.2); }
         
@@ -355,7 +355,7 @@
 </div>
         
         <div class="pipeline-container" id="pipeline">
-            <div style="display: grid; grid-template-columns: 45px auto 1fr; grid-template-areas: 'control gap nodes'; align-items: center;">
+            <div style="display: grid; grid-template-columns: 50px auto 1fr; grid-template-areas: 'control gap nodes'; align-items: center;">
                 <div style="grid-area: control;" class="pipeline-control">
                     <span class="control-label">P.Ctrl <span class="info-icon">i</span></span>
                     <label class="mode-toggle" title="Switch between Manual and Auto mode">

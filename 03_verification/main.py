@@ -112,9 +112,46 @@ def check_company_verification(company_id: int, db) -> None:
         logger.error(f"Error checking company verification: {e}")
 
 
+
+def write_metrics(db):
+    """Write service metrics for graphing via API."""
+    try:
+        import httpx
+        api_base = os.getenv('API_BASE', 'http://localhost:8000/api/v1')
+        
+        contacts_total = db.query(Contact).count()
+        verified_count = db.query(Contact).filter(Contact.is_verified == True).count()
+        invalid_count = db.query(Contact).filter(Contact.verification_status.in_(['invalid_syntax', 'no_mx_records'])).count()
+        pending_count = db.query(Contact).filter(Contact.verification_status == 'pending').count()
+        needs_retry = db.query(Contact).filter(Contact.verification_status == 'needs_retry').count()
+        
+        metrics = [
+            ('verification', 'contacts_total', contacts_total),
+            ('verification', 'verified_count', verified_count),
+            ('verification', 'invalid_count', invalid_count),
+            ('verification', 'pending_count', pending_count),
+            ('verification', 'needs_retry', needs_retry),
+        ]
+        
+        for svc, metric, value in metrics:
+            try:
+                httpx.post(
+                    f"{api_base}/dashboard/metrics",
+                    json={"service": svc, "metric": metric, "value": value},
+                    timeout=5.0,
+                )
+            except Exception as e:
+                logger.debug(f"Failed to write metric {metric}: {e}")
+                
+    except Exception as e:
+        logger.warning(f"Failed to write metrics: {e}")
+
+
 def run_verifier():
     """Main watcher loop."""
     logger.info(f"Verifier service started (poll interval: {POLL_INTERVAL}s)")
+    
+    metrics_counter = 0
     
     while True:
         db = SessionLocal()
@@ -162,6 +199,12 @@ def run_verifier():
             
             for company_id in processed_companies:
                 check_company_verification(company_id, db)
+            
+            # Write metrics every 60 seconds
+            metrics_counter += POLL_INTERVAL
+            if metrics_counter >= 60:
+                write_metrics(db)
+                metrics_counter = 0
             
             time.sleep(POLL_INTERVAL)
             

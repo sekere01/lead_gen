@@ -300,19 +300,23 @@ def write_metrics(db):
     try:
         from database import Company, DiscoveryJob
         
-        # Get current stats
-        companies_found = db.query(Company).count()
+        # Get current stats (names match frontend metricColors and servicePrimaryMetrics)
+        companies_total = db.query(Company).count()
         jobs_pending = db.query(DiscoveryJob).filter(DiscoveryJob.status == 'pending').count()
-        jobs_active = db.query(DiscoveryJob).filter(DiscoveryJob.status == 'processing').count()
+        jobs_processing = db.query(DiscoveryJob).filter(DiscoveryJob.status == 'processing').count()
+        jobs_completed = db.query(DiscoveryJob).filter(DiscoveryJob.status == 'completed').count()
+        jobs_failed = db.query(DiscoveryJob).filter(DiscoveryJob.status == 'failed').count()
         
         # Write metrics via API call
         import httpx
         api_base = os.getenv('API_BASE', 'http://localhost:8000/api/v1')
         
         metrics = [
-            ('discovery', 'companies_found', companies_found),
+            ('discovery', 'companies_total', companies_total),
             ('discovery', 'jobs_pending', jobs_pending),
-            ('discovery', 'jobs_active', jobs_active),
+            ('discovery', 'jobs_processing', jobs_processing),
+            ('discovery', 'jobs_completed', jobs_completed),
+            ('discovery', 'jobs_failed', jobs_failed),
         ]
         
         for svc, metric, value in metrics:

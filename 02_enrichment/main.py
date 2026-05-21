@@ -557,10 +557,44 @@ def watchdog_reset_stuck_companies(db) -> int:
     return reset_count
 
 
+
+def write_metrics(db):
+    """Write service metrics for graphing via API."""
+    try:
+        import httpx
+        api_base = os.getenv('API_BASE', 'http://localhost:8000/api/v1')
+        
+        emails_collected = db.query(Contact).count()
+        domains_processed = db.query(Company).filter(Company.status == 'enriched').count()
+        enrich_requeued = db.query(Company).filter(Company.status == 'enrich_requeued').count()
+        domain_enriching = db.query(Company).filter(Company.status == 'enriching').count()
+        
+        metrics = [
+            ('enrichment', 'emails_collected', emails_collected),
+            ('enrichment', 'domains_processed', domains_processed),
+            ('enrichment', 'enrich_requeued', enrich_requeued),
+            ('enrichment', 'domain_enriching', domain_enriching),
+        ]
+        
+        for svc, metric, value in metrics:
+            try:
+                httpx.post(
+                    f"{api_base}/dashboard/metrics",
+                    json={"service": svc, "metric": metric, "value": value},
+                    timeout=5.0,
+                )
+            except Exception as e:
+                logger.debug(f"Failed to write metric {metric}: {e}")
+                
+    except Exception as e:
+        logger.warning(f"Failed to write metrics: {e}")
+
+
 def run_enricher():
     """Main watcher loop."""
-    logger.info(f"Enricher service started (poll: {POLL_INTERVAL}s, concurrent: {MAX_RETRIES}, watchdog: {WATCHDOG_MINUTES}min)")
+    logger.info(f"Enricher service started (poll: {POLL_INTERVAL}s, concurrent: {MAX_CONCURRENT}, watchdog: {WATCHDOG_MINUTES}min)")
     
+    metrics_counter = 0
     consecutive_failures = 0
     max_failures_before_wait = 3
     
@@ -605,6 +639,12 @@ def run_enricher():
                         logger.info(f"Company {company.domain} processed: {result}")
                     except Exception as e:
                         logger.error(f"Error processing {company.domain}: {e}")
+            
+            # Write metrics every 60 seconds
+            metrics_counter += POLL_INTERVAL
+            if metrics_counter >= 60:
+                write_metrics(db)
+                metrics_counter = 0
             
             time.sleep(POLL_INTERVAL)
             

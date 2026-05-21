@@ -205,17 +205,10 @@ def get_dashboard_metrics(service: str = "discovery", window: str = "5m", db: Se
     from datetime import datetime, timezone, timedelta
     from shared_models import ServiceMetrics
     
-    # Parse time window - use local timezone-aware datetime
+    # Parse time window - use UTC to match DB timestamps
     window_seconds = {"5m": 300, "1h": 3600, "24h": 86400}.get(window, 300)
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
     cutoff = now - timedelta(seconds=window_seconds)
-    
-    # Ensure cutoff is timezone-aware for SQLAlchemy comparison
-    # Database timestamps are in local timezone (EDT/EST)
-    if cutoff.tzinfo is None:
-        from datetime import timezone
-        local_tz = datetime.now().astimezone().tzinfo
-        cutoff = cutoff.replace(tzinfo=local_tz)
     
     try:
         # Handle 'all' service - return data from ALL services

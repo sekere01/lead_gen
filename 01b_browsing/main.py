@@ -248,9 +248,44 @@ def watchdog_reset_stuck_companies(db) -> int:
     return reset_count
 
 
+
+def write_metrics(db):
+    """Write service metrics for graphing via API."""
+    try:
+        import httpx
+        api_base = os.getenv('API_BASE', 'http://localhost:8000/api/v1')
+        
+        pages_browsed = db.query(Company).filter(Company.status == 'browsed').count()
+        domain_browsed = db.query(Company).filter(Company.status == 'browsing').count()
+        domain_failed = db.query(Company).filter(Company.status == 'failed').count()
+        enrich_requeued = db.query(Company).filter(Company.status == 'requeued').count()
+        
+        metrics = [
+            ('browsing', 'pages_browsed', pages_browsed),
+            ('browsing', 'domain_browsed', domain_browsed),
+            ('browsing', 'domain_failed', domain_failed),
+            ('browsing', 'enrich_requeued', enrich_requeued),
+        ]
+        
+        for svc, metric, value in metrics:
+            try:
+                httpx.post(
+                    f"{api_base}/dashboard/metrics",
+                    json={"service": svc, "metric": metric, "value": value},
+                    timeout=5.0,
+                )
+            except Exception as e:
+                logger.debug(f"Failed to write metric {metric}: {e}")
+                
+    except Exception as e:
+        logger.warning(f"Failed to write metrics: {e}")
+
+
 def run_browser():
     """Main watcher loop."""
     logger.info(f"Browsing service started (poll: {POLL_INTERVAL}s, watchdog: {WATCHDOG_MINUTES}min, phase1: {MAX_RETRIES}, phase2: {MAX_RETRIES_PHASE2})")
+    
+    metrics_counter = 0
     
     while True:
         db = SessionLocal()
@@ -264,8 +299,28 @@ def run_browser():
             
             if not companies:
                 logger.debug("No companies to browse, waiting...")
-                time.sleep(POLL_INTERVAL)
-                continue
+            else:
+                company_ids = [c.id for c in companies]
+                logger.info(f"Found {len(company_ids)} companies to browse")
+                
+                with ThreadPoolExecutor(max_workers=BROWSING_WORKERS) as executor:
+                    futures = {
+                        executor.submit(process_company, cid): cid
+                        for cid in company_ids
+                    }
+                    
+                    for future in as_completed(futures):
+                        cid = futures[future]
+                        try:
+                            future.result()
+                        except Exception as e:
+                            logger.error(f"Unhandled error in thread for company {cid}: {e}")
+            
+            # Write metrics every 60 seconds
+            metrics_counter += POLL_INTERVAL
+            if metrics_counter >= 60:
+                write_metrics(db)
+                metrics_counter = 0
             
             company_ids = [c.id for c in companies]
             logger.info(f"Found {len(company_ids)} companies to browse")

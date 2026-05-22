@@ -144,6 +144,96 @@
         
         .pipeline-map { display: flex; align-items: center; justify-content: center; gap: 0; }
         
+        .pipeline-node { 
+            flex: 1 1 clamp(120px, 16vw, 180px);
+            min-width: 100px;
+            max-width: 200px;
+            padding: 16px 12px; 
+            background: linear-gradient(145deg, #1a1d24, #16181e); border: 2px solid #2a2d3a; 
+            border-radius: 10px; color: #e2e8f0; 
+            position: relative;
+            text-align: center;
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+            overflow: hidden;
+        }
+        .pipeline-node.running { border-color: #3b82f6; box-shadow: 0 0 20px rgba(59,130,246,0.4), inset 0 0 20px rgba(59,130,246,0.05); }
+        .pipeline-node.stopped { opacity: 0.5; border-color: #2a2d3a; }
+        .pipeline-node.expanded {
+            flex: 0 0 clamp(240px, 40vw, 340px) !important;
+            min-width: clamp(240px, 40vw, 340px);
+            max-width: clamp(240px, 40vw, 340px);
+        }
+        @keyframes node-pulse {
+            0%, 100% { box-shadow: 0 0 8px rgba(59,130,246,0.3); border-color: #3b82f6; }
+            50% { box-shadow: 0 0 30px rgba(59,130,246,0.7), inset 0 0 20px rgba(59,130,246,0.1); border-color: #60a5fa; }
+        }
+        .pipeline-node.pulsing {
+            animation: node-pulse 1.2s ease-in-out infinite;
+        }
+        
+        .service-controls {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid #2a2d3a;
+            text-align: center;
+        }
+        
+        .btn-3d {
+            position: relative;
+            width: 34px;
+            height: 34px;
+            padding: 0;
+            border: none;
+            border-radius: 50%;
+            font-size: 14px;
+            line-height: 1;
+            cursor: pointer;
+            color: #fff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.35), 0 2px 4px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.2);
+            animation: btn-breathe 3s ease-in-out infinite;
+        }
+        .btn-3d:hover {
+            transform: translateY(-2px) scale(1.08);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.45), 0 4px 8px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.25);
+        }
+        .btn-3d:active {
+            transform: translateY(1px) scale(0.95);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.05);
+        }
+        .btn-3d:disabled { opacity: 0.4; cursor: not-allowed; animation: none; transform: none !important; }
+        .btn-3d.btn-start {
+            background: linear-gradient(145deg, #34d399, #059669);
+            box-shadow: 0 4px 8px rgba(16,185,129,0.35), 0 2px 4px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.3);
+        }
+        .btn-3d.btn-start:hover {
+            box-shadow: 0 8px 20px rgba(16,185,129,0.5), 0 4px 8px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.35);
+        }
+        .btn-3d.btn-stop {
+            background: linear-gradient(145deg, #f87171, #dc2626);
+            box-shadow: 0 4px 8px rgba(239,68,68,0.35), 0 2px 4px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.3);
+        }
+        .btn-3d.btn-stop:hover {
+            box-shadow: 0 8px 20px rgba(239,68,68,0.5), 0 4px 8px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.35);
+        }
+        .btn-3d.btn-restart {
+            background: linear-gradient(145deg, #60a5fa, #2563eb);
+            box-shadow: 0 4px 8px rgba(59,130,246,0.35), 0 2px 4px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.3);
+        }
+        .btn-3d.btn-restart:hover {
+            box-shadow: 0 8px 20px rgba(59,130,246,0.5), 0 4px 8px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.35);
+        }
+        @keyframes btn-breathe {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.04); }
+        }
+        .btn-3d.btn-start:hover { animation: none; }
+        .btn-3d.btn-stop:hover { animation: none; }
+        .btn-3d.btn-restart:hover { animation: none; }
+        
         /* Pipeline Control Toggle */
         .pipeline-control { display: flex; flex-direction: column; align-items: center; gap: 8px; max-width: 50px; overflow: visible; }
         .control-label { font-size: clamp(6px, 1.2vw, 8px); color: #64748b; text-transform: uppercase; letter-spacing: 0.8px; display: flex; align-items: center; gap: 3px; max-width: 50px; }
@@ -172,10 +262,9 @@
         
         @media (max-width: 900px) {
             .pipeline-container { padding: 16px; }
-            .pipeline-node { width: 140px; padding: 12px; }
+            .pipeline-node.expanded { max-height: 80vh; min-width: clamp(200px, 50vw, 300px); max-width: clamp(200px, 50vw, 300px); flex: 0 0 clamp(200px, 50vw, 300px) !important; }
             .pipeline-node-name { font-size: 11px; }
             .pipeline-node-stats { font-size: 9px; }
-            .pipeline-line { width: 30px; }
         }
         
         @media (max-width: 400px) {
@@ -185,21 +274,12 @@
         
         @media (max-width: 600px) {
             .pipeline-map { flex-direction: column; gap: 12px; }
-            .pipeline-node { width: 100%; max-width: 180px; }
+            .pipeline-node { width: 100%; max-width: 100%; flex: none !important; }
+            .pipeline-node.expanded { max-height: 300px; overflow-y: auto; flex: none !important; min-width: 100%; max-width: 100%; }
             .pipeline-connector { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; }
             .pipeline-connector::after { content: '↓'; color: #3b82f6; font-size: 18px; }
             .pipeline-line { display: none; }
         }
-        .pipeline-node { 
-            width: 180px; padding: 16px 12px; 
-            background: linear-gradient(145deg, #1a1d24, #16181e); border: 2px solid #2a2d3a; 
-            border-radius: 10px; color: #e2e8f0; 
-            position: relative; flex-shrink: 0;
-            text-align: center;
-        }
-        .pipeline-node.running { border-color: #3b82f6; box-shadow: 0 0 20px rgba(59,130,246,0.4), inset 0 0 20px rgba(59,130,246,0.05); }
-        .pipeline-node.stopped { opacity: 0.5; border-color: #2a2d3a; }
-        
         .pipeline-node-name { 
             font-size: 13px; font-weight: 700; letter-spacing: 1px; 
             text-transform: uppercase; margin-bottom: 8px;
@@ -211,11 +291,18 @@
         }
         
         .pipeline-node-stats { 
-            display: grid; grid-template-columns: 1fr 1fr; gap: 6px; 
+            display: grid; gap: 6px; 
             font-size: 10px; 
+            grid-template-columns: 1fr 1fr;
+        }
+        .pipeline-node.expanded .pipeline-node-stats {
+            grid-template-columns: 1fr auto 1fr;
+            gap: 4px; align-items: center;
         }
         .pipeline-node-stats .stat-label { color: #64748b; font-size: 9px; text-transform: uppercase; }
         .pipeline-node-stats .stat-value { color: #e2e8f0; font-weight: 700; font-size: 12px; }
+        .stats-btns { display: none; gap: 3px; align-items: center; justify-content: center; }
+        .pipeline-node.expanded .stats-btns { display: flex; }
         
         .pipeline-node-queue { 
             margin-top: 8px; padding: 4px 10px; border-radius: 20px; 
@@ -253,11 +340,13 @@
         .pipeline-connector { 
             display: flex; align-items: center; 
             position: relative; flex-shrink: 0;
+            transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
         }
         .pipeline-line { 
-            width: 40px; height: 2px; 
+            width: clamp(16px, 3vw, 40px); height: 2px; 
             background: #3b82f6; position: relative; overflow: visible;
             border-radius: 2px;
+            transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
         }
         .pipeline-line.stopped { background: #334155; }
         .pipeline-line-dot {
@@ -317,6 +406,25 @@
           width: 120px;
           margin-bottom: 12px;
         }
+
+        /* === VERIFIER PROGRESS WIDGET === */
+        .verifier-progress { padding: 4px 0; }
+        .verifier-progress .vp-row { display: flex; justify-content: space-between; font-size: 10px; padding: 3px 0; }
+        .verifier-progress .vp-label { color: #94a3b8; }
+        .verifier-progress .vp-value { font-weight: 600; color: #e2e8f0; }
+        .verifier-progress .vp-value.verified { color: #34d399; }
+        .verifier-progress .vp-value.failed { color: #f87171; }
+        .verifier-progress .vp-bar-track { height: 4px; background: #1e293b; border-radius: 2px; margin-top: 6px; overflow: hidden; }
+        .verifier-progress .vp-bar-fill { height: 100%; border-radius: 2px; transition: width 0.5s ease; }
+        .verifier-progress .vp-bar-fill.idle { width: 0; background: #64748b; }
+        .verifier-progress .vp-bar-fill.running { background: linear-gradient(90deg, #3b82f6, #60a5fa); }
+        .verifier-progress .vp-bar-fill.completed { background: linear-gradient(90deg, #10b981, #34d399); }
+        .verifier-progress .vp-status { display: flex; align-items: center; gap: 4px; margin-top: 4px; font-size: 9px; }
+        .verifier-progress .vp-status-dot { width: 6px; height: 6px; border-radius: 50%; }
+        .verifier-progress .vp-status-dot.running { background: #3b82f6; animation: pulse 1s infinite; }
+        .verifier-progress .vp-status-dot.completed { background: #10b981; }
+        .verifier-progress .vp-status-dot.idle { background: #64748b; }
+        .vp-sources { margin-top: 6px; padding-top: 6px; border-top: 1px solid #334155; }
     </style>
 <body>
     <div class="header">
@@ -333,6 +441,7 @@
             <button class="btn btn-sm" id="theme-toggle" onclick="toggleTheme()" aria-label="Toggle dark mode">🌙</button>
             <button class="btn btn-secondary" onclick="viewLogs()" aria-label="View pipeline logs">Logs</button>
             <button class="btn btn-secondary" onclick="openExportModal()" aria-label="Export emails">Export</button>
+            <button class="btn btn-secondary" onclick="openImportModal()" aria-label="Import emails">Import</button>
         </div>
     </div>
     
@@ -526,22 +635,49 @@
         </div>
     </div>
     
-    <div class="modal" id="service-modal">
-        <div class="modal-content" style="max-width: 400px;">
+    <div class="modal" id="import-modal">
+        <div class="modal-content" style="max-width: 600px;">
             <div class="modal-header">
-                <h2 id="service-modal-title">Service</h2>
-                <button onclick="closeModal('service-modal')">&times;</button>
+                <h2>Import Emails</h2>
+                <button onclick="closeModal('import-modal')">&times;</button>
             </div>
-            <div class="modal-body" style="text-align: center;">
-                <div id="service-status-icon" style="font-size: 48px; margin-bottom: 16px;"></div>
-                <div id="service-status-text" style="font-size: 18px; font-weight: 600; margin-bottom: 20px;"></div>
-                <div id="service-uptime" style="color: #64748b; margin-bottom: 24px;"></div>
-                <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
-                    <button class="btn btn-success" id="btn-start" onclick="serviceAction('start', this)">Start</button>
-                    <button class="btn btn-danger" id="btn-stop" onclick="serviceAction('stop', this)">Stop</button>
-                    <button class="btn btn-primary" id="btn-restart" onclick="serviceAction('restart', this)">Restart</button>
+            <div class="modal-body">
+                <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+                    <button class="btn btn-sm btn-primary" id="import-mode-txt" onclick="setImportMode('txt')">Plain Text</button>
+                    <button class="btn btn-sm btn-secondary" id="import-mode-csv" onclick="setImportMode('csv')">CSV File</button>
                 </div>
-                <div id="service-message" style="margin-top: 16px; padding: 12px; border-radius: 6px; display: none;"></div>
+                
+                <div id="import-txt-section">
+                    <div class="form-group" id="import-txt-input-container">
+                        <label>Paste emails (one per line)</label>
+                        <textarea id="import-txt-input" rows="8" placeholder="email1@example.com&#10;email2@example.com" style="width:100%;padding:10px 12px;border:1px solid var(--border-color);border-radius:6px;font-size:14px;background:var(--bg-secondary);color:var(--text-primary);resize:vertical;" oninput="onImportInputChange()"></textarea>
+                    </div>
+                    <div id="import-txt-file-info" style="display:none;font-size:13px;color:var(--text-secondary);margin-bottom:8px;padding:8px 12px;background:var(--bg-tertiary);border-radius:6px;">
+                        File: <span id="import-txt-filename"></span>
+                        <a href="#" onclick="clearImportTxtFile();return false;" style="margin-left:8px;color:var(--accent);">Remove</a>
+                    </div>
+                    <div style="font-size:12px;color:var(--text-secondary);margin-top:4px;">
+                        Or upload a .txt file:
+                        <input type="file" id="import-txt-file" accept=".txt" onchange="onImportTxtFileChange()" style="display:inline;margin-left:4px;">
+                    </div>
+                </div>
+                
+                <div id="import-csv-section" style="display:none;">
+                    <div class="form-group">
+                        <label>Upload CSV file</label>
+                        <input type="file" id="import-csv-file" accept=".csv" onchange="onImportFileChange()" style="display:block;margin-top:4px;">
+                        <div style="font-size:12px;color:var(--text-secondary);margin-top:4px;">CSV must include an <strong>email</strong> column header.</div>
+                    </div>
+                </div>
+                
+                <div id="import-preview" style="display:none;margin-top:8px;">
+                    <div id="import-count" style="padding:8px 12px;background:var(--bg-tertiary);border-radius:6px;margin-bottom:8px;font-size:13px;"></div>
+                    <div id="import-preview-list" style="max-height:150px;overflow-y:auto;background:var(--bg-primary);border-radius:6px;padding:8px;font-size:11px;font-family:monospace;white-space:pre-wrap;word-break:break-all;"></div>
+                </div>
+                
+                <div id="import-results" style="display:none;padding:12px;border-radius:6px;margin-top:8px;font-size:13px;background:var(--bg-tertiary);"></div>
+                
+                <button class="btn btn-primary" style="width:100%;margin-top:12px;" id="import-btn" onclick="confirmImport()" disabled>Import</button>
             </div>
         </div>
     </div>
@@ -766,6 +902,8 @@ function initWebSocket() {
                 }
             } else if (message.type === "pong") {
                 // Server responded to our ping
+            } else if (message.type === "verification_progress") {
+                updateVerifierProgress(message.data);
             }
         } catch (e) {
             console.error("WebSocket message error:", e);
@@ -1100,8 +1238,8 @@ function animateCounter(element, target, duration = 1000) {
         let metricsService = 'discovery';
         let currentWindow = '5m';
         let serviceCounterInterval = null;
-        let currentService = null;
         let metricsInterval = null;
+        let pipelineInitialized = false;
         
         function selectService(service) {
             metricsService = service;
@@ -1333,6 +1471,13 @@ function animateCounter(element, target, duration = 1000) {
                 return;
             }
             
+            // After initial render, only lightweight stats update (no DOM rebuild)
+            if (pipelineInitialized) {
+                updatePipelineStats(pipeline);
+                return;
+            }
+            pipelineInitialized = true;
+            
             const nodes = [
                 { key: 'discovery', label: 'Discovery' },
                 { key: 'browsing', label: 'Browsing' },
@@ -1356,7 +1501,12 @@ function animateCounter(element, target, duration = 1000) {
                     const status = data.status || 'stopped';
                     const queueLevel = data.queue > 50 ? 'high' : data.queue > 10 ? 'medium' : 'low';
                     
-                    child.className = 'pipeline-node ' + status;
+                    if (child.classList.contains('pulsing')) {
+                        const oldStatus = Array.from(child.classList).find(c => c === 'stopped' || c === 'running' || c === 'idle') || status;
+                        child.className = 'pipeline-node ' + oldStatus + ' pulsing' + (child.classList.contains('expanded') ? ' expanded' : '');
+                    } else {
+                        child.className = 'pipeline-node ' + status + (child.classList.contains('expanded') ? ' expanded' : '');
+                    }
                     
                     const statValues = child.querySelectorAll('.stat-value');
                     if (statValues[0]) statValues[0].textContent = data.uptime || '--';
@@ -1371,11 +1521,15 @@ function animateCounter(element, target, duration = 1000) {
                     // Update source statuses inside sub-nodes
                     const subEl = child.querySelector('.sub-nodes');
                     if (subEl) {
-                        const subs = subEl.children;
-                        const srcLabels = ['DDGS:', 'SearXNG:', 'CommonCrawl:', 'theHarvester:'];
-                        const srcKeys = ['ddgs', 'searxng', 'commoncrawl', 'theharvester'];
-                        for (let si = 0; si < subs.length && si < srcKeys.length; si++) {
-                            subs[si].innerHTML = '<span class="sub-label">' + srcLabels[si] + '</span> ' + (sources[srcKeys[si]]?.status || 'N/A');
+                        if (node.key === 'verification') {
+                            // Verifier progress is updated via WebSocket, not here
+                        } else {
+                            const subs = subEl.children;
+                            const srcLabels = ['DDGS:', 'SearXNG:', 'CommonCrawl:', 'theHarvester:'];
+                            const srcKeys = ['ddgs', 'searxng', 'commoncrawl', 'theharvester'];
+                            for (let si = 0; si < subs.length && si < srcKeys.length; si++) {
+                                subs[si].innerHTML = '<span class="sub-label">' + srcLabels[si] + '</span> ' + (sources[srcKeys[si]]?.status || 'N/A');
+                            }
                         }
                     }
                     
@@ -1405,13 +1559,18 @@ function animateCounter(element, target, duration = 1000) {
                     const status = data.status || 'stopped';
                     const queueLevel = data.queue > 50 ? 'high' : data.queue > 10 ? 'medium' : 'low';
                     
-                    html += `<div class="pipeline-node ${status}" onclick="openServiceModal('${node.key}', '${node.label}')">
+                    html += `<div class="pipeline-node ${status}" onclick="toggleSubNodes('${node.key}')">
                         <div class="pipeline-node-name">${node.label}</div>
                         <div class="pipeline-node-divider"></div>
                         <div class="pipeline-node-stats">
                             <div>
                                 <div class="stat-label">Uptime</div>
                                 <div class="stat-value">${data.uptime || '--'}</div>
+                            </div>
+                            <div class="stats-btns" id="sbtns-${node.key}">
+                                <button class="btn-3d btn-start" data-action="start" data-service="${node.key}" onclick="event.stopPropagation(); serviceAction('start', this)">▶</button>
+                                <button class="btn-3d btn-stop" data-action="stop" data-service="${node.key}" onclick="event.stopPropagation(); serviceAction('stop', this)">✕</button>
+                                <button class="btn-3d btn-restart" data-action="restart" data-service="${node.key}" onclick="event.stopPropagation(); serviceAction('restart', this)">↻</button>
                             </div>
                             <div>
                                 <div class="stat-label">Processed</div>
@@ -1421,12 +1580,29 @@ function animateCounter(element, target, duration = 1000) {
                         <div class="pipeline-node-queue ${queueLevel}">
                             ${data.queue} waiting
                         </div>
-                        <div class="node-toggle" onclick="event.stopPropagation(); toggleSubNodes('${node.key}')">▼ Sources</div>
+                        <div class="node-toggle" onclick="event.stopPropagation(); toggleSubNodes('${node.key}')">${node.key === 'verification' ? '▼ Imported Contacts' : '▼ Sources'}</div>
                         <div class="sub-nodes" id="sub-${node.key}">
-                            <div class="sub-node"><span class="sub-label">DDGS:</span> ${sources.ddgs?.status || 'N/A'}</div>
-                            <div class="sub-node"><span class="sub-label">SearXNG:</span> ${sources.searxng?.status || 'N/A'}</div>
-                            <div class="sub-node"><span class="sub-label">CommonCrawl:</span> ${sources.commoncrawl?.status || 'N/A'}</div>
-                            <div class="sub-node"><span class="sub-label">theHarvester:</span> ${sources.theharvester?.status || 'N/A'}</div>
+                            ${node.key === 'verification'
+                                ? `<div class="verifier-progress">
+                                    <div class="vp-row"><span class="vp-label">Processed</span><span class="vp-value" id="vp-processed">0</span></div>
+                                    <div class="vp-row"><span class="vp-label">Verified</span><span class="vp-value verified" id="vp-verified">0</span></div>
+                                    <div class="vp-row"><span class="vp-label">Failed</span><span class="vp-value failed" id="vp-failed">0</span></div>
+                                    <div class="vp-bar-track"><div class="vp-bar-fill idle" id="vp-bar"></div></div>
+                                    <div class="vp-status"><span class="vp-status-dot idle" id="vp-dot"></span><span id="vp-status-text">Idle</span></div>
+                                </div>
+                                <div class="vp-sources">
+                                    ${Object.entries(data.sources || {}).map(([name, s]) =>
+                                        `<div class="sub-node"><span class="sub-label">${name}:</span> ${(s.verified || 0).toLocaleString()} / ${(s.total || 0).toLocaleString()} verified</div>`
+                                    ).join('')}
+                                </div>`
+                                : `<div class="sub-node"><span class="sub-label">DDGS:</span> ${sources.ddgs?.status || 'N/A'}</div>
+                                   <div class="sub-node"><span class="sub-label">SearXNG:</span> ${sources.searxng?.status || 'N/A'}</div>
+                                   <div class="sub-node"><span class="sub-label">CommonCrawl:</span> ${sources.commoncrawl?.status || 'N/A'}</div>
+                                   <div class="sub-node"><span class="sub-label">theHarvester:</span> ${sources.theharvester?.status || 'N/A'}</div>`
+                            }
+                        </div>
+                        <div class="service-controls" id="sc-${node.key}" style="display:none;">
+                            <div class="sc-message" id="sc-msg-${node.key}" style="display:none;"></div>
                         </div>
                     </div>`;
                     
@@ -1439,115 +1615,193 @@ function animateCounter(element, target, duration = 1000) {
                         </div>`;
                     }
                 });
+                // Save expanded and pulsing state before full re-render
+                const oldExpanded = container.querySelector('.pipeline-node.expanded');
+                const expandedKey = oldExpanded
+                    ? oldExpanded.querySelector('.sub-nodes')?.id?.replace('sub-', '')
+                    : null;
+                const oldPulsing = Array.from(container.querySelectorAll('.pipeline-node.pulsing'))
+                    .map(el => el.querySelector('.sub-nodes')?.id?.replace('sub-', ''))
+                    .filter(Boolean);
                 container.innerHTML = html;
+                // Restore expanded state after re-render
+                if (expandedKey) {
+                    const sub = document.getElementById(`sub-${expandedKey}`);
+                    if (sub) {
+                        sub.classList.add('expanded');
+                        sub.closest('.pipeline-node').classList.add('expanded');
+                        const toggle = sub.previousElementSibling;
+                        toggle.textContent = `▲ ${expandedKey === 'verification' ? 'Imported Contacts' : 'Sources'}`;
+                        const sc = document.getElementById(`sc-${expandedKey}`);
+                        if (sc) sc.style.display = 'block';
+                        fetch(`${API}/services/status`).then(r => r.json()).then(services => {
+                            const srv = services.find(s => s.name === expandedKey);
+                            const st = srv?.status || 'stopped';
+                            const node = sub.closest('.pipeline-node');
+                            node.querySelectorAll('.btn-3d').forEach(b => {
+                                b.style.display = '';
+                                if (b.dataset.action === 'start') b.style.display = st === 'running' ? 'none' : '';
+                                if (b.dataset.action === 'stop') b.style.display = st === 'running' ? '' : 'none';
+                                if (b.dataset.action === 'restart') b.style.display = st === 'running' ? '' : 'none';
+                            });
+                        }).catch(() => {});
+                    }
+                }
+                // Restore pulsing state after re-render
+                oldPulsing.forEach(key => {
+                    const sub = document.getElementById(`sub-${key}`);
+                    if (sub) sub.closest('.pipeline-node').classList.add('pulsing');
+                });
             }
         }
-        
-        function toggleSubNodes(nodeKey) {
-            const el = document.getElementById(`sub-${nodeKey}`);
-            el.classList.toggle('expanded');
-            const toggle = el.previousElementSibling;
-            toggle.textContent = el.classList.contains('expanded') ? '▲ Sources' : '▼ Sources';
-        }
-        
-        async function openServiceModal(name, label) {
-            console.log('openServiceModal called:', name, label);
-            ['btn-start', 'btn-stop', 'btn-restart'].forEach(id => {
-                const btn = document.getElementById(id);
-                if (btn) {
-                    btn.disabled = false;
-                    btn.style.display = 'inline-block';
-                    btn.textContent = id === 'btn-start' ? 'Start' : 
-                                   id === 'btn-stop' ? 'Stop' : 'Restart';
+
+        function updatePipelineStats(pipeline) {
+            const container = document.getElementById('pipeline-map');
+            if (!container || container.children.length !== 7) return;
+            if (container.querySelector('.pipeline-node.pulsing')) return;
+            const nodes = ['discovery','browsing','enrichment','verification'];
+            nodes.forEach((key, i) => {
+                const child = container.children[i * 2];
+                if (!child || !child.classList.contains('pipeline-node')) return;
+                const data = pipeline[key];
+                if (!data) return;
+                if (!child.classList.contains('pulsing')) {
+                    child.classList.remove('running', 'stopped', 'idle');
+                    child.classList.add(data.status || 'stopped');
+                }
+                const queueEl = child.querySelector('.pipeline-node-queue');
+                if (queueEl) {
+                    const ql = data.queue > 50 ? 'high' : data.queue > 10 ? 'medium' : 'low';
+                    queueEl.className = 'pipeline-node-queue ' + ql;
+                    queueEl.textContent = data.queue + ' waiting';
+                }
+                const subEl = child.querySelector('.sub-nodes');
+                if (subEl && key !== 'verification') {
+                    const subs = subEl.children;
+                    const srcKeys = ['ddgs', 'searxng', 'commoncrawl', 'theharvester'];
+                    const sources = pipeline.sources || {};
+                    for (let si = 0; si < subs.length && si < srcKeys.length; si++) {
+                        const label = subs[si].querySelector('.sub-label');
+                        if (label) {
+                            subs[si].innerHTML = '<span class="sub-label">' + label.textContent + '</span> ' + (sources[srcKeys[si]]?.status || 'N/A');
+                        }
+                    }
+                }
+                if (i < nodes.length - 1) {
+                    const conn = container.children[i * 2 + 1];
+                    if (conn && conn.classList.contains('pipeline-connector')) {
+                        const lineEl = conn.querySelector('.pipeline-line');
+                        if (lineEl) {
+                            const ls = data.status === 'running' ? 'running' : 'stopped';
+                            lineEl.className = 'pipeline-line ' + ls;
+                            const hasDots = !!lineEl.querySelector('.pipeline-line-dot');
+                            if (ls === 'running' && !hasDots) {
+                                lineEl.innerHTML = '<div class="pipeline-line-dot"></div><div class="pipeline-line-dot"></div>';
+                            } else if (ls !== 'running' && hasDots) {
+                                lineEl.innerHTML = '';
+                            }
+                        }
+                    }
                 }
             });
-            
-            if (serviceCounterInterval) {
-                clearInterval(serviceCounterInterval);
-                serviceCounterInterval = null;
+        }
+
+        function toggleSubNodes(nodeKey) {
+            const el = document.getElementById(`sub-${nodeKey}`);
+            if (!el.classList.contains('expanded')) {
+                document.querySelectorAll('.sub-nodes.expanded').forEach(other => {
+                    if (other !== el) {
+                        other.classList.remove('expanded');
+                        const otherToggle = other.previousElementSibling;
+                        const otherKey = other.id.replace('sub-', '');
+                        const otherPrefix = otherKey === 'verification' ? 'Imported Contacts' : 'Sources';
+                        otherToggle.textContent = `▼ ${otherPrefix}`;
+                        other.closest('.pipeline-node').classList.remove('expanded');
+                        const otherSc = document.getElementById(`sc-${otherKey}`);
+                        if (otherSc) otherSc.style.display = 'none';
+                    }
+                });
             }
-            currentService = name;
-            document.getElementById('service-modal-title').textContent = label;
-            document.getElementById('service-message').style.display = 'none';
-            
-            // Show modal immediately with loading state
-            document.getElementById('service-status-icon').textContent = '⏳';
-            document.getElementById('service-status-icon').style.color = '#f59e0b';
-            document.getElementById('service-status-text').textContent = 'Loading...';
-            document.getElementById('service-uptime').textContent = '';
-            document.getElementById('service-modal').classList.add('active');
-            
-            try {
-                const res = await fetch(`${API}/services/status`);
-                const services = await res.json();
-                const service = services.find(s => s.name === name);
-                const status = service?.status || 'stopped';
-                const uptime = service?.uptime ? formatUptime(service.uptime) : 'Not running';
-                const startedAgo = service?.start_time ? 'Started: ' + formatStartTime(service.start_time) : '';
-                
-                document.getElementById('service-status-icon').textContent = status === 'running' ? '🟢' : '🔴';
-                document.getElementById('service-status-icon').style.color = status === 'running' ? '#10b981' : '#ef4444';
-                document.getElementById('service-status-text').textContent = status === 'running' ? 'Running' : 'Stopped';
-                document.getElementById('service-uptime').innerHTML = uptime + (startedAgo ? `<br><span style="color:#10b981">${startedAgo}</span>` : '');
-                
-                document.getElementById('btn-start').style.display = status === 'running' ? 'none' : 'inline-block';
-                document.getElementById('btn-stop').style.display = status === 'running' ? 'inline-block' : 'none';
-                document.getElementById('btn-restart').style.display = status === 'running' ? 'inline-block' : 'none';
-            } catch (e) {
-                document.getElementById('service-status-icon').textContent = '⚪';
-                document.getElementById('service-status-text').textContent = 'Error';
-                document.getElementById('service-uptime').textContent = 'Failed to load status';
+            const isExpanded = el.classList.toggle('expanded');
+            const toggle = el.previousElementSibling;
+            const prefix = nodeKey === 'verification' ? 'Imported Contacts' : 'Sources';
+            toggle.textContent = isExpanded ? `▲ ${prefix}` : `▼ ${prefix}`;
+            const node = el.closest('.pipeline-node');
+            node.classList.toggle('expanded', isExpanded);
+
+            const sc = document.getElementById(`sc-${nodeKey}`);
+            if (sc) {
+                sc.style.display = isExpanded ? 'block' : 'none';
+                if (isExpanded) {
+                    const msgEl = document.getElementById(`sc-msg-${nodeKey}`);
+                    if (msgEl) msgEl.style.display = 'none';
+                    fetch(`${API}/services/status`).then(r => r.json()).then(services => {
+                        const srv = services.find(s => s.name === nodeKey);
+                        const st = srv?.status || 'stopped';
+                        node.querySelectorAll('.btn-3d').forEach(b => {
+                            b.style.display = '';
+                            if (b.dataset.action === 'start') b.style.display = st === 'running' ? 'none' : '';
+                            if (b.dataset.action === 'stop') b.style.display = st === 'running' ? '' : 'none';
+                            if (b.dataset.action === 'restart') b.style.display = st === 'running' ? '' : 'none';
+                        });
+                    }).catch(() => {});
+                }
             }
         }
-        
-        function formatStartTime(timestamp) {
-            if (!timestamp) return '';
-            const now = Date.now() / 1000;
-            const diff = Math.floor(now - timestamp);
-            if (diff < 60) return `${diff}s ago`;
-            if (diff < 3600) return `${Math.floor(diff/60)}m ago`;
-            if (diff < 86400) return `${Math.floor(diff/3600)}h ago`;
-            return `${Math.floor(diff/86400)}d ago`;
-        }
-        
-        function formatUptime(seconds) {
-            if (!seconds) return 'Not running';
-            const h = Math.floor(seconds / 3600);
-            const m = Math.floor((seconds % 3600) / 60);
-            return h > 0 ? `${h}h ${m}m` : `${m}m`;
+
+        function updateVerifierProgress(data) {
+            const processedEl = document.getElementById('vp-processed');
+            const verifiedEl = document.getElementById('vp-verified');
+            const failedEl = document.getElementById('vp-failed');
+            const barEl = document.getElementById('vp-bar');
+            const dotEl = document.getElementById('vp-dot');
+            const statusEl = document.getElementById('vp-status-text');
+            if (!processedEl) return;
+            const total = data.total || 1;
+            const processed = data.processed || 0;
+            const verified = data.verified || 0;
+            const failed = data.failed || 0;
+            const status = data.status || 'idle';
+            const pct = Math.min(100, Math.round((processed / total) * 100));
+            processedEl.textContent = processed;
+            verifiedEl.textContent = verified;
+            failedEl.textContent = failed;
+            barEl.className = 'vp-bar-fill ' + status;
+            barEl.style.width = pct + '%';
+            dotEl.className = 'vp-status-dot ' + status;
+            const labels = { idle: 'Idle', running: 'Running...', completed: 'Completed' };
+            statusEl.textContent = labels[status] || status;
         }
         
         async function serviceAction(action, btn) {
-            console.log('serviceAction called:', action, 'currentService:', currentService);
-            if (!currentService) {
-                console.error('currentService is undefined!');
-                return;
-            }
+            const node = btn.closest('.pipeline-node');
+            const service = btn.dataset.service;
+            if (!service) return;
+            node.classList.add('pulsing');
             
-            console.log('Fetching:', `${API}/services/${currentService}/${action}`);
+            console.log('serviceAction:', action, service);
             
-            // Disable all buttons immediately to prevent double-clicks
-            ['btn-start', 'btn-stop', 'btn-restart'].forEach(id => {
-                const el = document.getElementById(id);
-                if (el) el.disabled = true;
-            });
+            const allBtns = node.querySelectorAll('.btn-3d');
+            allBtns.forEach(b => b.disabled = true);
             
             let counter = 0;
             const actionPrefix = action === 'start' ? 'Starting' : action === 'stop' ? 'Stopping' : 'Restarting';
-            const originalText = action === 'start' ? 'Start' : action === 'stop' ? 'Stop' : 'Restart';
+            const originalText = btn.textContent;
             
             serviceCounterInterval = setInterval(() => {
                 counter++;
                 btn.textContent = `${actionPrefix}... ${counter}s`;
             }, 1000);
             btn.textContent = `${actionPrefix}... 0s`;
-            document.getElementById('service-message').style.display = 'none';
+            
+            const msgEl = document.getElementById(`sc-msg-${service}`);
+            if (msgEl) msgEl.style.display = 'none';
             
             try {
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 15000);
                 
-                const res = await fetch(`${API}/services/${currentService}/${action}`, { 
+                const res = await fetch(`${API}/services/${service}/${action}`, { 
                     method: 'POST',
                     signal: controller.signal
                 });
@@ -1565,64 +1819,108 @@ function animateCounter(element, target, duration = 1000) {
                     serviceCounterInterval = null;
                 }
                 
+                const isInProgress = data.error && (data.error.includes('already in progress') || data.error.includes('already running'));
                 if (data.success) {
-                    closeModal('service-modal');
-                    // Exponential backoff: Track service actions to extend delay
-                    const now = Date.now();
-                    if (!window.lastServiceActionTime || (now - window.lastServiceActionTime) > 10000) {
-                        window.serviceActionCount = 0;
+                    btn.textContent = originalText;
+                    const targetStatus = action === 'stop' ? 'stopped' : 'running';
+                    const reshuffle = () => {
+                        allBtns.forEach(b => { b.disabled = false; b.style.display = ''; });
+                        allBtns.forEach(b => {
+                            if (b.dataset.action === 'start') b.style.display = targetStatus === 'running' ? 'none' : '';
+                            if (b.dataset.action === 'stop') b.style.display = targetStatus === 'running' ? '' : 'none';
+                            if (b.dataset.action === 'restart') b.style.display = targetStatus === 'running' ? '' : 'none';
+                        });
+                        node.classList.remove('pulsing');
+                    };
+                    const pollTimer = setInterval(async () => {
+                        try {
+                            const res = await fetch(`${API}/services/status`);
+                            const services = await res.json();
+                            const srv = services.find(s => s.name === service);
+                            if (srv && srv.status === targetStatus) {
+                                clearInterval(pollTimer);
+                                reshuffle();
+                                loadDashboard(true);
+                            }
+                        } catch {
+                            clearInterval(pollTimer);
+                            reshuffle();
+                            loadDashboard(true);
+                        }
+                    }, 2000);
+                    setTimeout(() => { clearInterval(pollTimer); reshuffle(); loadDashboard(true); }, 30000);
+                } else if (action === 'start' && isInProgress) {
+                    btn.textContent = originalText;
+                    // Buttons stay disabled during stop→start→poll cycle
+                    try {
+                        await fetch(`${API}/services/${service}/stop`, { method: 'POST' });
+                        await new Promise(r => setTimeout(r, 2000));
+                        const retryRes = await fetch(`${API}/services/${service}/start`, { method: 'POST' });
+                        const retryData = await retryRes.json();
+                        if (retryData.success) {
+                            const reshuffle = () => {
+                                const sb = document.getElementById(`sbtns-${service}`);
+                                allBtns.forEach(b => { b.disabled = false; b.style.display = ''; });
+                                if (sb) {
+                                    sb.querySelector('.btn-start').style.display = 'none';
+                                    sb.querySelector('.btn-stop').style.display = '';
+                                    sb.querySelector('.btn-restart').style.display = '';
+                                }
+                                node.classList.remove('pulsing');
+                            };
+                            const pt = setInterval(async () => {
+                                try {
+                                    const r2 = await fetch(`${API}/services/status`);
+                                    const s2 = await r2.json();
+                                    const sv2 = s2.find(x => x.name === service);
+                                    if (sv2 && sv2.status === 'running') { clearInterval(pt); reshuffle(); loadDashboard(true); }
+                                } catch { clearInterval(pt); reshuffle(); loadDashboard(true); }
+                            }, 2000);
+                            setTimeout(() => { clearInterval(pt); reshuffle(); loadDashboard(true); }, 30000);
+                        } else {
+                            node.classList.remove('pulsing');
+                            if (msgEl) { msgEl.style.display = 'block'; msgEl.textContent = `Start failed: ${retryData.error || 'Unknown'}`; }
+                            allBtns.forEach(b => { b.style.display = ''; b.disabled = false; });
+                        }
+                    } catch (e) {
+                        node.classList.remove('pulsing');
+                        if (msgEl) { msgEl.style.display = 'block'; msgEl.textContent = `Error: ${e.message}`; }
+                        allBtns.forEach(b => { b.style.display = ''; b.disabled = false; });
                     }
-                    window.lastServiceActionTime = now;
-                    window.serviceActionCount = (window.serviceActionCount || 0) + 1;
-                    
-                    // Delay increases with multiple actions: 3s → 10s → 15s
-                    const baseDelay = window.serviceActionCount === 1 ? 3000 : 
-                                  window.serviceActionCount === 2 ? 10000 : 15000;
-                    
-                    const dashContent = document.getElementById('pipeline-map');
-                    if (dashContent) {
-                        dashContent.innerHTML = '<div class="loading" style="padding:20px;text-align:center;color:var(--text-secondary)">Refreshing pipeline...</div>';
-                    }
-                    setTimeout(() => loadDashboard(), baseDelay);
                 } else {
-                    const msgEl = document.getElementById('service-message');
-                    msgEl.style.display = 'block';
-                    msgEl.style.background = 'rgba(239,68,68,0.1)';
-                    msgEl.style.color = '#ef4444';
-                    msgEl.textContent = `Failed after ${counter}s: ${data.error || 'Failed'}`;
+                    node.classList.remove('pulsing');
+                    if (msgEl) {
+                        msgEl.style.display = 'block';
+                        msgEl.style.background = 'rgba(239,68,68,0.1)';
+                        msgEl.style.color = '#ef4444';
+                        msgEl.textContent = `Failed after ${counter}s: ${data.error || 'Failed'}`;
+                    }
                     btn.textContent = originalText;
                     const isRunning = data.error && data.error.includes('already running');
-                    ['btn-start', 'btn-stop', 'btn-restart'].forEach(id => {
-                        const el = document.getElementById(id);
-                        if (!el) return;
-                        el.disabled = false;
-                        if (id === 'btn-start') el.style.display = isRunning ? 'none' : 'inline-block';
-                        if (id === 'btn-stop' || id === 'btn-restart') el.style.display = isRunning ? 'inline-block' : 'none';
+                    allBtns.forEach(b => {
+                        b.disabled = false;
+                        if (b.dataset.action === 'start') b.style.display = isRunning ? 'none' : '';
+                        if (b.dataset.action === 'stop') b.style.display = isRunning ? '' : 'none';
+                        if (b.dataset.action === 'restart') b.style.display = isRunning ? '' : 'none';
                     });
                 }
             } catch (e) {
                 console.error('serviceAction error:', e);
+                node.classList.remove('pulsing');
                 if (serviceCounterInterval) {
                     clearInterval(serviceCounterInterval);
                     serviceCounterInterval = null;
                 }
-                const msgEl = document.getElementById('service-message');
-                msgEl.style.display = 'block';
-                msgEl.style.background = 'rgba(239,68,68,0.1)';
-                msgEl.style.color = '#ef4444';
-                
-                // Handle abort errors specially
-                if (e.name === 'AbortError') {
-                    msgEl.textContent = `Request timed out after ${counter}s`;
-                } else {
-                    msgEl.textContent = `Failed after ${counter}s: ${e.message || 'Error'}`;
+                if (msgEl) {
+                    msgEl.style.display = 'block';
+                    msgEl.style.background = 'rgba(239,68,68,0.1)';
+                    msgEl.style.color = '#ef4444';
+                    msgEl.textContent = e.name === 'AbortError'
+                        ? `Request timed out after ${counter}s`
+                        : `Failed after ${counter}s: ${e.message || 'Error'}`;
                 }
-                
                 btn.textContent = originalText;
-                ['btn-start', 'btn-stop', 'btn-restart'].forEach(id => {
-                    const el = document.getElementById(id);
-                    if (el) el.disabled = false;
-                });
+                allBtns.forEach(b => b.disabled = false);
             }
         }
         
@@ -2002,10 +2300,6 @@ function animateCounter(element, target, duration = 1000) {
         
         function closeModal(id) {
             document.getElementById(id).classList.remove('active');
-            if (id === 'service-modal' && serviceCounterInterval) {
-                clearInterval(serviceCounterInterval);
-                serviceCounterInterval = null;
-            }
             if (id === 'mode-confirm-modal' && pendingMode) {
                 const input = document.getElementById('mode-toggle-input');
                 input.checked = pendingMode !== 'systemd';
@@ -2089,16 +2383,138 @@ function animateCounter(element, target, duration = 1000) {
             window.open(url, '_blank');
             closeModal('export-modal');
         }
+
+        let importMode = 'txt';
+        let importFileText = '';
+
+        function openImportModal() {
+            importFileText = '';
+            document.getElementById('import-modal').classList.add('active');
+            const btn = document.getElementById('import-btn');
+            btn.textContent = 'Import';
+            btn.onclick = confirmImport;
+            resetImportState();
+        }
+
+        function setImportMode(mode) {
+            importMode = mode;
+            const txtBtn = document.getElementById('import-mode-txt');
+            const csvBtn = document.getElementById('import-mode-csv');
+            txtBtn.className = 'btn btn-sm ' + (mode === 'txt' ? 'btn-primary' : 'btn-secondary');
+            csvBtn.className = 'btn btn-sm ' + (mode === 'csv' ? 'btn-primary' : 'btn-secondary');
+            document.getElementById('import-txt-section').style.display = mode === 'txt' ? '' : 'none';
+            document.getElementById('import-csv-section').style.display = mode === 'csv' ? '' : 'none';
+            resetImportState();
+        }
+
+        function resetImportState() {
+            document.getElementById('import-preview').style.display = 'none';
+            document.getElementById('import-results').style.display = 'none';
+            document.getElementById('import-btn').disabled = true;
+            document.getElementById('import-txt-input-container').style.display = '';
+            document.getElementById('import-txt-file-info').style.display = 'none';
+            document.getElementById('import-txt-file').value = '';
+            importFileText = '';
+        }
+
+        function onImportInputChange() {
+            const text = document.getElementById('import-txt-input').value.trim();
+            if (text) {
+                showImportPreview(text, 'txt');
+            } else {
+                resetImportState();
+            }
+        }
+
+        async function onImportTxtFileChange() {
+            const file = document.getElementById('import-txt-file').files[0];
+            if (!file) return;
+            importFileText = await file.text();
+            document.getElementById('import-txt-input-container').style.display = 'none';
+            document.getElementById('import-txt-filename').textContent = file.name;
+            document.getElementById('import-txt-file-info').style.display = '';
+            showImportPreview(importFileText, 'txt');
+        }
+
+        function clearImportTxtFile() {
+            document.getElementById('import-txt-file').value = '';
+            document.getElementById('import-txt-input-container').style.display = '';
+            document.getElementById('import-txt-file-info').style.display = 'none';
+            importFileText = '';
+            document.getElementById('import-txt-input').value = '';
+            resetImportState();
+        }
+
+        async function onImportFileChange() {
+            const file = document.getElementById('import-csv-file').files[0];
+            if (!file) return;
+            importFileText = await file.text();
+            if (importFileText.trim()) {
+                showImportPreview(importFileText, 'csv');
+            }
+        }
+
+        function showImportPreview(text, format) {
+            const lines = format === 'csv'
+                ? text.split('\n').filter(l => l.trim()).slice(1)
+                : text.split('\n').filter(l => l.trim());
+            document.getElementById('import-count').textContent = lines.length + ' email(s) found';
+            document.getElementById('import-preview-list').textContent =
+                lines.slice(0, 20).join('\n') + (lines.length > 20 ? '\n... and ' + (lines.length - 20) + ' more' : '');
+            document.getElementById('import-preview').style.display = '';
+            document.getElementById('import-btn').disabled = false;
+        }
+
+        async function confirmImport() {
+            const btn = document.getElementById('import-btn');
+            btn.disabled = true;
+            btn.textContent = 'Importing...';
+
+            const text = importMode === 'csv'
+                ? importFileText
+                : (importFileText || document.getElementById('import-txt-input').value);
+
+            try {
+                const res = await fetch(API + '/contacts/import', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: text, format: importMode }),
+                });
+                if (!res.ok) {
+                    const body = await res.text();
+                    throw new Error('Server returned ' + res.status + ': ' + body.slice(0, 200));
+                }
+                const data = await res.json();
+
+                const resultsEl = document.getElementById('import-results');
+                resultsEl.style.display = '';
+                let html = '<div style="font-weight:600;margin-bottom:8px;">Import Complete</div>';
+                html += '<div>✅ Imported: ' + data.imported + '</div>';
+                html += '<div>⏭️ Skipped (duplicates): ' + data.skipped + '</div>';
+                html += '<div>🏢 Companies created: ' + data.companies_created + '</div>';
+                if (data.failed && data.failed.length) {
+                    html += '<div style="margin-top:8px;color:#ef4444;">❌ Failed: ' + data.failed.length + '</div>';
+                }
+                resultsEl.innerHTML = html;
+                btn.disabled = false;
+                btn.textContent = 'Close';
+                btn.onclick = () => closeModal('import-modal');
+                document.getElementById('import-txt-input').value = '';
+                document.getElementById('import-csv-file').value = '';
+            } catch (e) {
+                const resultsEl = document.getElementById('import-results');
+                resultsEl.style.display = '';
+                resultsEl.innerHTML = '<div style="color:#ef4444;">Error: ' + e.message + '</div>';
+                btn.textContent = 'Import';
+                btn.disabled = false;
+            }
+        }
         
         // Close modal when clicking outside
         document.querySelectorAll('.modal').forEach(modal => {
             modal.addEventListener('click', function(e) {
                 if (e.target === this) {
                     this.classList.remove('active');
-                    if (this.id === 'service-modal' && serviceCounterInterval) {
-                        clearInterval(serviceCounterInterval);
-                        serviceCounterInterval = null;
-                    }
                 }
             });
         });
@@ -2265,6 +2681,7 @@ function animateCounter(element, target, duration = 1000) {
                 const data = await res.json();
                 updateModeBadge(data.mode);
                 input.checked = data.mode === 'systemd';
+                pendingMode = null;
                 closeModal('mode-confirm-modal');
                 
                 let msg = `Switched to ${data.mode === 'systemd' ? 'Auto' : 'Manual'} mode`;
@@ -2272,6 +2689,7 @@ function animateCounter(element, target, duration = 1000) {
                 showToast(msg, data.warning ? 'warning' : 'success');
                 
                 setTimeout(() => loadDashboard(true), 2000);
+                setTimeout(() => loadDashboard(true), 10000);
             } catch (e) {
                 input.checked = previousMode === 'systemd';
                 const msgEl = document.getElementById('mode-confirm-message');

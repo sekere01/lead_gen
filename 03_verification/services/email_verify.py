@@ -19,7 +19,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-from utils.email_utils import EMAIL_REGEX
+from utils.email_utils import EMAIL_REGEX, is_noise_email, is_placeholder_email
 
 
 def validate_syntax(email: str) -> Tuple[bool, Optional[str]]:
@@ -76,7 +76,10 @@ def has_mx_record(email: str) -> Tuple[bool, Optional[List[Dict[str, Any]]]]:
 
 
 def verify_email_fast(email: str) -> Dict[str, Any]:
-    """Fast verification: Syntax + Disposable + MX (no SMTP)."""
+    """Fast verification: Noise/Placeholder filter + Syntax + MX (no SMTP).
+    MX exists + syntax valid → verified (per user rules).
+    Disposable is informational, not blocking.
+    """
     result = {
         "email": email,
         "is_valid_syntax": False,
@@ -86,7 +89,17 @@ def verify_email_fast(email: str) -> Dict[str, Any]:
         "verification_status": "invalid",
         "details": {}
     }
-    
+
+    if is_noise_email(email):
+        result["verification_status"] = "invalid_syntax"
+        result["details"]["syntax_error"] = "noise_email"
+        return result
+
+    if is_placeholder_email(email):
+        result["verification_status"] = "invalid_syntax"
+        result["details"]["syntax_error"] = "placeholder_email"
+        return result
+
     is_valid_syntax, syntax_error = validate_syntax(email)
     result["is_valid_syntax"] = is_valid_syntax
     result["details"]["syntax_error"] = syntax_error
@@ -94,12 +107,13 @@ def verify_email_fast(email: str) -> Dict[str, Any]:
     if not is_valid_syntax:
         result["verification_status"] = "invalid_syntax"
         return result
+
+    is_disposable = is_disposable_email(email)
+    result["is_disposable"] = is_disposable
     
-    if is_disposable_email(email):
-        result["is_disposable"] = True
-        result["verification_status"] = "disposable_domain"
-        return result
-    
+    if is_disposable:
+        result["details"]["disposable"] = True
+
     has_mx, mx_records = has_mx_record(email)
     result["has_mx_records"] = has_mx
     result["details"]["mx_records"] = mx_records
@@ -107,7 +121,8 @@ def verify_email_fast(email: str) -> Dict[str, Any]:
     if not has_mx:
         result["verification_status"] = "no_mx_records"
         return result
-    
+
+    # MX exists + syntax valid → verified (disposable is informational only)
     result["is_verified"] = True
     result["verification_status"] = "valid_verified"
     

@@ -17,6 +17,8 @@ try:
 except ImportError:
     disposable_blocklist = set()
 
+from utils.email_utils import is_noise_email, is_placeholder_email
+
 logger = logging.getLogger(__name__)
 
 EMAIL_REGEX = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
@@ -75,7 +77,17 @@ def verify_email_fast(email: str) -> Dict[str, Any]:
         "verification_status": "invalid",
         "details": {}
     }
-    
+
+    if is_noise_email(email):
+        result["verification_status"] = "invalid_syntax"
+        result["details"]["syntax_error"] = "noise_email"
+        return result
+
+    if is_placeholder_email(email):
+        result["verification_status"] = "invalid_syntax"
+        result["details"]["syntax_error"] = "placeholder_email"
+        return result
+
     is_valid_syntax, syntax_error = validate_syntax(email)
     result["is_valid_syntax"] = is_valid_syntax
     
@@ -83,10 +95,8 @@ def verify_email_fast(email: str) -> Dict[str, Any]:
         result["verification_status"] = "invalid_syntax"
         return result
     
-    if is_disposable_email(email):
-        result["is_disposable"] = True
-        result["verification_status"] = "disposable_domain"
-        return result
+    is_disposable = is_disposable_email(email)
+    result["is_disposable"] = is_disposable
     
     has_mx, mx_records = has_mx_record(email)
     result["has_mx_records"] = has_mx
@@ -95,7 +105,11 @@ def verify_email_fast(email: str) -> Dict[str, Any]:
         result["verification_status"] = "no_mx_records"
         return result
     
+    # MX exists + syntax valid → verified (per user rules)
     result["is_verified"] = True
-    result["verification_status"] = "valid_verified"
+    if is_disposable:
+        result["verification_status"] = "valid_disposable"
+    else:
+        result["verification_status"] = "valid_verified"
     
     return result

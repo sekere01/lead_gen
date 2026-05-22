@@ -23,6 +23,15 @@ class MetricWrite(BaseModel):
     value: float
 
 
+class VerificationProgress(BaseModel):
+    total: int = 0
+    processed: int = 0
+    verified: int = 0
+    failed: int = 0
+    status: str = "idle"
+    timestamp: Optional[str] = None
+
+
 def _format_uptime(seconds: Optional[int]) -> str:
     """Format uptime in seconds to human readable string."""
     if not seconds:
@@ -180,14 +189,23 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
             'queue': verification_queue,
             'uptime': _format_uptime(services_lookup.get('verification', {}).get('uptime')),
             'processed': verification_processed,
+            'sources': {},
         },
-        'sources': {
-            'ddgs': {'status': 'active'},
-            'searxng': {'status': 'active'},
-            'commoncrawl': {'status': 'active'},
-            'theharvester': {'status': 'active'},
-        }
     }
+
+    # Per-source verification counts for the verification node
+    try:
+        source_verification = db.query(
+            func.coalesce(Contact.source, 'discovery').label('source'),
+            func.count(Contact.id).label('total'),
+            func.count(Contact.id).filter(Contact.is_verified == True).label('verified'),
+        ).group_by(func.coalesce(Contact.source, 'discovery')).all()
+        pipeline['verification']['sources'] = {
+            row.source: {"total": row.total, "verified": row.verified}
+            for row in source_verification
+        }
+    except Exception as e:
+        logger.warning(f"Failed to query source verification counts: {e}")
 
     metrics = PipelineMetrics(
         companies_total=companies_total,
@@ -314,6 +332,15 @@ def write_metric(payload: MetricWrite, db: Session = Depends(get_db)):
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/verification-progress")
+async def report_verification_progress(payload: VerificationProgress):
+    """Receive verification progress from verifier service and broadcast via WebSocket."""
+    from datetime import datetime, timezone
+    payload.timestamp = datetime.now(timezone.utc).isoformat()
+    broadcast_update("verification_progress", payload.dict())
+    return {"ok": True}
 
 
 @router.get("/job/{job_id}/companies")

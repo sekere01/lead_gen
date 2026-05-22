@@ -73,6 +73,7 @@ def _migrate_missing_columns():
             ("discovery_jobs", "last_heartbeat", "TIMESTAMP WITH TIME ZONE"),
             ("job_stats", "last_job_id", "INTEGER"),
             ("companies", "job_id", "INTEGER"),
+            ("contacts", "source", "VARCHAR(50)"),
         ]
         for table, column, col_type in columns_to_add:
             try:

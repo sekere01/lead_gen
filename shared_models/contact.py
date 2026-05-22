@@ -22,6 +22,7 @@ class Contact(Base):
     verification_status = Column(String(50), index=True)
     is_catch_all = Column(Boolean, default=False)
     needs_retry = Column(Boolean, default=False)
+    source = Column(String(50), index=True)
     source_url = Column(Text)
     company_id = Column(Integer, ForeignKey("companies.id"), nullable=False, index=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

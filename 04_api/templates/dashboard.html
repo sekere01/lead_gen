@@ -303,6 +303,9 @@
         .pipeline-node-stats .stat-value { color: #e2e8f0; font-weight: 700; font-size: 12px; }
         .stats-btns { display: none; gap: 3px; align-items: center; justify-content: center; }
         .pipeline-node.expanded .stats-btns { display: flex; }
+        .pipeline-container.auto-mode .pipeline-node.expanded .stats-btns { display: flex; font-size: 9px; color: #10b981; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px; }
+        .pipeline-container.auto-mode .stats-btns::after { content: 'Auto'; }
+        .pipeline-container.auto-mode .stats-btns .btn-3d { display: none; }
         
         .pipeline-node-queue { 
             margin-top: 8px; padding: 4px 10px; border-radius: 20px; 
@@ -1777,6 +1780,10 @@ function animateCounter(element, target, duration = 1000) {
             const node = btn.closest('.pipeline-node');
             const service = btn.dataset.service;
             if (!service) return;
+            if (document.getElementById('pipeline').classList.contains('auto-mode')) {
+                console.warn('serviceAction blocked: Auto mode');
+                return;
+            }
             node.classList.add('pulsing');
             
             console.log('serviceAction:', action, service);
@@ -2628,6 +2635,7 @@ function animateCounter(element, target, duration = 1000) {
         
         function updateModeBadge(mode) {
             const badge = document.getElementById('mode-badge');
+            document.getElementById('pipeline').classList.toggle('auto-mode', mode === 'systemd');
             if (mode === 'systemd') {
                 badge.className = 'mode-badge systemd';
                 badge.textContent = 'Auto';

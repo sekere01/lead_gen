@@ -8,11 +8,11 @@ import logging
 import re
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from database import get_db, Contact, Company, SessionLocal
@@ -32,34 +32,62 @@ class ContactResponse(BaseModel):
     job_title: Optional[str]
     is_verified: bool
     verification_status: Optional[str]
+    source: Optional[str]
     company_id: int
     created_at: Optional[datetime]
-    
+
     class Config:
         from_attributes = True
 
 
-@router.get("")
+class PaginatedContacts(BaseModel):
+    items: List[ContactResponse]
+    total: int
+    page: int
+    pages: int
+    limit: int
+
+
+@router.get("", response_model=PaginatedContacts)
 def list_contacts(
     status: Optional[str] = Query(None, alias="verification_status"),
     is_verified: Optional[bool] = Query(None),
+    source: Optional[str] = Query(None),
     company_id: Optional[int] = Query(None),
-    limit: int = Query(100),
+    search: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    limit: int = Query(500, ge=1, le=5000),
     db: Session = Depends(get_db)
 ):
-    """List contacts with optional filtering."""
+    """List contacts with pagination, search, and optional filtering."""
     try:
         query = db.query(Contact)
         if status:
-            query = query.filter(Contact.verification_status == status)
+            status_list = [s.strip() for s in status.split(",") if s.strip()]
+            query = query.filter(Contact.verification_status.in_(status_list))
         if is_verified is not None:
             query = query.filter(Contact.is_verified == is_verified)
+        if source:
+            query = query.filter(Contact.source == source)
         if company_id:
             query = query.filter(Contact.company_id == company_id)
-        return query.order_by(Contact.created_at.desc()).limit(limit).all()
+        if search:
+            term = f"%{search}%"
+            query = query.filter(
+                or_(
+                    Contact.email.ilike(term),
+                    Contact.first_name.ilike(term),
+                    Contact.last_name.ilike(term),
+                    Contact.job_title.ilike(term),
+                )
+            )
+        total = query.count()
+        pages = max(1, (total + limit - 1) // limit)
+        items = query.order_by(Contact.created_at.desc()).offset((page - 1) * limit).limit(limit).all()
+        return PaginatedContacts(items=items, total=total, page=page, pages=pages, limit=limit)
     except Exception as e:
         logger.error(f"Error listing contacts: {e}")
-        return []
+        return PaginatedContacts(items=[], total=0, page=1, pages=1, limit=limit)
 
 
 @router.get("/{contact_id}", response_model=ContactResponse)
@@ -313,24 +341,28 @@ async def _run_batch_verify(job_id: str):
             batch_ids = contact_ids[offset:offset + _BATCH_SIZE]
             contacts = db.query(Contact).filter(Contact.id.in_(batch_ids)).all()
 
-            tasks = [
-                loop.run_in_executor(pool, verify_email_fast, c.email)
-                for c in contacts
-            ]
-            results = await asyncio.gather(*tasks)
-
             updates = []
             v_count = 0
             f_count = 0
-            for contact, result in zip(contacts, results):
-                updates.append({
-                    "id": contact.id,
-                    "is_verified": result["is_verified"],
-                    "verification_status": result["verification_status"],
-                })
-                if result["is_verified"]:
-                    v_count += 1
-                else:
+            for c in contacts:
+                try:
+                    result = await loop.run_in_executor(pool, verify_email_fast, c.email)
+                    updates.append({
+                        "id": c.id,
+                        "is_verified": result["is_verified"],
+                        "verification_status": result["verification_status"],
+                    })
+                    if result["is_verified"]:
+                        v_count += 1
+                    else:
+                        f_count += 1
+                except Exception as e:
+                    logger.error(f"Verification failed for {c.email}: {e}")
+                    updates.append({
+                        "id": c.id,
+                        "is_verified": False,
+                        "verification_status": "failed",
+                    })
                     f_count += 1
 
             if updates:

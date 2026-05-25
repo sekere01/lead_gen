@@ -6,6 +6,7 @@ from typing import List, Optional
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from database import get_db, Company
@@ -24,23 +25,45 @@ class CompanyResponse(BaseModel):
     status: str
     is_active: bool
     created_at: Optional[datetime]
-    
+
     class Config:
         from_attributes = True
 
 
-@router.get("")
+class PaginatedCompanies(BaseModel):
+    items: List[CompanyResponse]
+    total: int
+    page: int
+    pages: int
+    limit: int
+
+
+@router.get("", response_model=PaginatedCompanies)
 def list_companies(
     status: Optional[str] = Query(None),
-    limit: int = Query(100),
+    search: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    limit: int = Query(500, ge=1, le=5000),
     db: Session = Depends(get_db)
 ):
-    """List companies with optional filtering."""
+    """List companies with pagination, search, and optional filtering."""
     try:
         query = db.query(Company)
         if status:
             query = query.filter(Company.status == status)
-        return query.order_by(Company.created_at.desc()).limit(limit).all()
+        if search:
+            term = f"%{search}%"
+            query = query.filter(
+                or_(
+                    Company.domain.ilike(term),
+                    Company.industry.ilike(term),
+                    Company.name.ilike(term),
+                )
+            )
+        total = query.count()
+        pages = max(1, (total + limit - 1) // limit)
+        items = query.order_by(Company.created_at.desc()).offset((page - 1) * limit).limit(limit).all()
+        return PaginatedCompanies(items=items, total=total, page=page, pages=pages, limit=limit)
     except Exception as e:
         logger.error(f"Error listing companies: {e}")
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")

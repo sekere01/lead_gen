@@ -94,6 +94,20 @@
         .badge.processing { background: #dbeafe; color: #1e40af; }
         .badge.completed { background: #d1fae5; color: #065f46; }
         .badge.failed { background: #fee2e2; color: #991b1b; }
+        .badge.discovered { background: #f0fdf4; color: #166534; }
+        .badge.browsing { background: #dbeafe; color: #1e40af; }
+        .badge.browsed { background: #d1fae5; color: #065f46; }
+        .badge.requeued { background: #fef3c7; color: #92400e; }
+        .badge.enriching { background: #e0e7ff; color: #3730a3; }
+        .badge.enriched { background: #d1fae5; color: #065f46; }
+        .badge.enrich_requeued { background: #fef3c7; color: #92400e; }
+        .badge.verified { background: #ede9fe; color: #5b21b6; }
+        .badge.valid_verified { background: #d1fae5; color: #065f46; }
+        .badge.valid_disposable { background: #fef3c7; color: #92400e; }
+        .badge.no_mx_records { background: #fee2e2; color: #991b1b; }
+        .badge.invalid_syntax { background: #fee2e2; color: #991b1b; }
+        .badge.source-imported { background: #dbeafe; color: #1e40af; }
+        .badge.source-enriched { background: #ede9fe; color: #5b21b6; }
         
         .queue-list { max-height: 300px; overflow-y: auto; }
         .queue-list::-webkit-scrollbar { width: 5px; }
@@ -458,7 +472,7 @@
                 <h3>Contacts</h3>
                 <div class="value" id="total-contacts">-</div>
             </div>
-            <div class="stat-card" style="cursor: pointer;" onclick="showContactsModal('valid_verified')">
+            <div class="stat-card" style="cursor: pointer;" onclick="showContactsModal('verified')">
                 <h3>Verified</h3>
                 <div class="value completed" id="verified-contacts">-</div>
             </div>
@@ -692,29 +706,40 @@
                 <button onclick="closeModal('companies-modal')">&times;</button>
             </div>
             <div class="modal-body">
-                <div class="form-group" style="display: flex; gap: 12px;">
-                    <input type="text" id="companies-search" placeholder="Search by domain..." oninput="filterCompanies()">
-                    <select id="companies-filter" onchange="filterCompanies()">
+                <div class="form-group" style="display: flex; gap: 12px; margin-bottom: 8px;">
+                    <input type="text" id="companies-search" placeholder="Search by domain..." oninput="onCompaniesSearchInput()" style="flex: 1;">
+                    <select id="companies-filter" onchange="applyCompaniesFilters()" style="width: 160px;">
                         <option value="">All Statuses</option>
                         <option value="discovered">Discovered</option>
+                        <option value="browsing">Browsing</option>
                         <option value="browsed">Browsed</option>
+                        <option value="requeued">Requeued</option>
+                        <option value="enriching">Enriching</option>
                         <option value="enriched">Enriched</option>
+                        <option value="enrich_requeued">Enrich Requeued</option>
                         <option value="verified">Verified</option>
                         <option value="failed">Failed</option>
                     </select>
                 </div>
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>Domain</th>
-                            <th>Industry</th>
-                            <th>Status</th>
-                            <th>Score</th>
-                            <th>Created</th>
-                        </tr>
-                    </thead>
-                    <tbody id="companies-modal-list"><tr><td colspan="5"><div class="loading-spinner"></div></td></tr></tbody>
-                </table>
+                <div style="max-height: 60vh; overflow-y: auto;" class="styled-scroll">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Domain</th>
+                                <th>Industry</th>
+                                <th>Status</th>
+                                <th>Score</th>
+                                <th>Created</th>
+                            </tr>
+                        </thead>
+                        <tbody id="companies-modal-list"><tr><td colspan="5"><div class="loading-spinner"></div></td></tr></tbody>
+                    </table>
+                </div>
+                <div class="pagination-controls" style="display:flex;justify-content:space-between;align-items:center;padding:8px 4px;">
+                    <button class="btn" id="companies-prev" onclick="prevCompaniesPage()" disabled>← Prev</button>
+                    <span id="companies-page-info" style="font-size:13px;color:#666;"></span>
+                    <button class="btn" id="companies-next" onclick="nextCompaniesPage()">Next →</button>
+                </div>
             </div>
         </div>
     </div>
@@ -727,31 +752,41 @@
             </div>
             <div class="modal-body" style="padding: 12px;">
                 <div class="form-group" style="display: flex; gap: 8px; margin-bottom: 8px;">
-                    <input type="text" id="contacts-search" placeholder="Search by email..." oninput="filterContacts()" style="flex: 1;">
-                    <select id="contacts-filter" onchange="filterContacts()" style="width: 150px;">
+                    <input type="text" id="contacts-search" placeholder="Search by email, name, or title..." oninput="onContactsSearchInput()" style="flex: 1;">
+                    <select id="contacts-filter" onchange="applyContactsFilters()" style="width: 150px;">
                         <option value="">All Statuses</option>
                         <option value="pending">Pending</option>
-                        <option value="valid_verified">Valid Verified</option>
+                        <option value="verified">Verified</option>
+                        <option value="valid_disposable">Valid Disposable</option>
                         <option value="no_mx_records">No MX</option>
                         <option value="invalid_syntax">Invalid Syntax</option>
-                        <option value="disposable_domain">Disposable</option>
-                        <option value="needs_retry">Needs Retry</option>
                         <option value="failed">Failed</option>
+                    </select>
+                    <select id="contacts-source-filter" onchange="applyContactsFilters()" style="width: 130px;">
+                        <option value="">All Sources</option>
+                        <option value="imported">Imported</option>
+                        <option value="enriched">Enriched</option>
                     </select>
                 </div>
                 <div style="max-height: 60vh; overflow-y: auto;" class="styled-scroll">
                     <table class="table">
                         <thead>
                             <tr>
-                                <th style="width: 18%;">Email</th>
-                                <th style="width: 25%;">Job Title</th>
-                                <th style="width: 18%;">Verification</th>
-                                <th style="width: 12%;">Verified</th>
-                                <th style="width: 27%;">Created</th>
+                                <th style="width: 16%;">Email</th>
+                                <th style="width: 22%;">Job Title</th>
+                                <th style="width: 16%;">Verification</th>
+                                <th style="width: 10%;">Source</th>
+                                <th style="width: 10%;">Verified</th>
+                                <th style="width: 26%;">Created</th>
                             </tr>
                         </thead>
-                        <tbody id="contacts-modal-list"><tr><td colspan="5"><div class="loading-spinner"></div></td></tr></tbody>
+                        <tbody id="contacts-modal-list"><tr><td colspan="6"><div class="loading-spinner"></div></td></tr></tbody>
                     </table>
+                </div>
+                <div class="pagination-controls" style="display:flex;justify-content:space-between;align-items:center;padding:8px 4px;">
+                    <button class="btn" id="contacts-prev" onclick="prevContactsPage()" disabled>← Prev</button>
+                    <span id="contacts-page-info" style="font-size:13px;color:#666;"></span>
+                    <button class="btn" id="contacts-next" onclick="nextContactsPage()">Next →</button>
                 </div>
             </div>
         </div>
@@ -2182,35 +2217,50 @@ function animateCounter(element, target, duration = 1000) {
             document.getElementById('bulk-job-modal').classList.add('active');
         }
         
-        let allCompanies = [];
-        
-        async function showCompaniesModal() {
-            document.getElementById('companies-modal').classList.add('active');
+        // --- Companies pagination state ---
+        let companiesPage = 1, companiesTotal = 0, companiesPages = 0;
+        let companiesSearch = '', companiesStatus = '';
+        let companiesLoading = false;
+        let companiesSearchDebounce = null;
+
+        function onCompaniesSearchInput() {
+            clearTimeout(companiesSearchDebounce);
+            companiesSearchDebounce = setTimeout(applyCompaniesFilters, 300);
+        }
+
+        function applyCompaniesFilters() {
+            companiesSearch = document.getElementById('companies-search').value;
+            companiesStatus = document.getElementById('companies-filter').value;
+            companiesPage = 1;
+            fetchCompanies();
+        }
+
+        async function fetchCompanies() {
+            if (companiesLoading) return;
+            companiesLoading = true;
             try {
-                const res = await fetch(`${API}/companies?limit=500`);
-                allCompanies = await res.json();
-                filterCompanies();
+                let url = `${API}/companies?page=${companiesPage}&limit=500`;
+                if (companiesSearch) url += `&search=${encodeURIComponent(companiesSearch)}`;
+                if (companiesStatus) url += `&status=${companiesStatus}`;
+                const res = await fetch(url);
+                const data = await res.json();
+                companiesTotal = data.total;
+                companiesPages = data.pages;
+                renderCompanies(data.items);
             } catch (e) {
                 console.error('Failed to load companies:', e);
                 document.getElementById('companies-modal-list').innerHTML = '<tr><td colspan="5" class="empty-state">Failed to load companies</td></tr>';
+            } finally {
+                companiesLoading = false;
             }
         }
-        
-        function filterCompanies() {
-            const search = document.getElementById('companies-search').value.toLowerCase();
-            const status = document.getElementById('companies-filter').value;
-            
-            const filtered = allCompanies.filter(c => {
-                const matchesSearch = !search || c.domain.toLowerCase().includes(search) || (c.industry && c.industry.toLowerCase().includes(search));
-                const matchesStatus = !status || c.status === status;
-                return matchesSearch && matchesStatus;
-            });
-            
+
+        function renderCompanies(items) {
             const tbody = document.getElementById('companies-modal-list');
-            if (filtered.length === 0) {
+            if (items.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No companies found</td></tr>';
             } else {
-                tbody.innerHTML = filtered.map(c => `
+                tbody.innerHTML = items.map(c => `
                     <tr>
                         <td>${c.domain}</td>
                         <td>${c.industry || '-'}</td>
@@ -2220,49 +2270,122 @@ function animateCounter(element, target, duration = 1000) {
                     </tr>
                 `).join('');
             }
+            const start = (companiesPage - 1) * 2000 + 1;
+            const end = Math.min(companiesPage * 2000, companiesTotal);
+            document.getElementById('companies-page-info').textContent =
+                `Showing ${start}–${end} of ${companiesTotal.toLocaleString()} companies`;
+            document.getElementById('companies-prev').disabled = companiesPage <= 1;
+            document.getElementById('companies-next').disabled = companiesPage >= companiesPages;
         }
-        
-        let allContacts = [];
-        
-        async function showContactsModal(initialFilter = '') {
-            document.getElementById('contacts-modal').classList.add('active');
-            if (initialFilter) {
-                document.getElementById('contacts-filter').value = initialFilter;
-            }
+
+        async function showCompaniesModal() {
+            document.getElementById('companies-modal').classList.add('active');
+            document.getElementById('companies-search').value = '';
+            companiesSearch = '';
+            companiesStatus = '';
+            document.getElementById('companies-filter').value = '';
+            companiesPage = 1;
+            await fetchCompanies();
+        }
+
+        function prevCompaniesPage() {
+            if (companiesPage > 1) { companiesPage--; fetchCompanies(); }
+        }
+
+        function nextCompaniesPage() {
+            if (companiesPage < companiesPages) { companiesPage++; fetchCompanies(); }
+        }
+
+        // --- Contacts pagination state ---
+        let contactsPage = 1, contactsTotal = 0, contactsPages = 0;
+        let contactsSearch = '', contactsStatus = '', contactsSource = '';
+        let contactsLoading = false;
+        let contactsSearchDebounce = null;
+
+        function onContactsSearchInput() {
+            clearTimeout(contactsSearchDebounce);
+            contactsSearchDebounce = setTimeout(applyContactsFilters, 300);
+        }
+
+        function applyContactsFilters() {
+            contactsSearch = document.getElementById('contacts-search').value;
+            contactsStatus = document.getElementById('contacts-filter').value;
+            contactsSource = document.getElementById('contacts-source-filter').value;
+            contactsPage = 1;
+            fetchContacts();
+        }
+
+        async function fetchContacts() {
+            if (contactsLoading) return;
+            contactsLoading = true;
             try {
-                const res = await fetch(`${API}/contacts?limit=500`);
-                allContacts = await res.json();
-                filterContacts();
+                let url = `${API}/contacts?page=${contactsPage}&limit=500`;
+                if (contactsSearch) url += `&search=${encodeURIComponent(contactsSearch)}`;
+                if (contactsStatus) {
+                    const sv = contactsStatus === 'verified' ? 'verified,valid_verified' : contactsStatus;
+                    url += `&verification_status=${sv}`;
+                }
+                if (contactsSource) url += `&source=${contactsSource}`;
+                const res = await fetch(url);
+                const data = await res.json();
+                contactsTotal = data.total;
+                contactsPages = data.pages;
+                renderContacts(data.items);
             } catch (e) {
                 console.error('Failed to load contacts:', e);
-                document.getElementById('contacts-modal-list').innerHTML = '<tr><td colspan="5" class="empty-state">Failed to load contacts</td></tr>';
+                document.getElementById('contacts-modal-list').innerHTML = '<tr><td colspan="6" class="empty-state">Failed to load contacts</td></tr>';
+            } finally {
+                contactsLoading = false;
             }
         }
-        
-        function filterContacts() {
-            const search = document.getElementById('contacts-search').value.toLowerCase();
-            const status = document.getElementById('contacts-filter').value;
-            
-            const filtered = allContacts.filter(c => {
-                const matchesSearch = !search || (c.email && c.email.toLowerCase().includes(search));
-                const matchesStatus = !status || c.verification_status === status;
-                return matchesSearch && matchesStatus;
-            });
-            
+
+        function renderContacts(items) {
             const tbody = document.getElementById('contacts-modal-list');
-            if (filtered.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No contacts found</td></tr>';
+            if (items.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No contacts found</td></tr>';
             } else {
-                tbody.innerHTML = filtered.map(c => `
+                tbody.innerHTML = items.map(c => `
                     <tr>
-                        <td style="width: 18%;">${c.email}</td>
-                        <td style="width: 25%;">${c.job_title || '-'}</td>
-                        <td style="width: 18%;"><span class="badge ${c.verification_status}">${c.verification_status}</span></td>
-                        <td style="width: 12%;">${c.is_verified ? 'Yes' : 'No'}</td>
-                        <td style="width: 27%;">${c.created_at ? new Date(c.created_at).toLocaleDateString() : '-'}</td>
+                        <td style="width: 16%;">${c.email}</td>
+                        <td style="width: 22%;">${c.job_title || '-'}</td>
+                        <td style="width: 16%;"><span class="badge ${c.verification_status}">${c.verification_status}</span></td>
+                        <td style="width: 10%;"><span class="badge source-${c.source || 'enriched'}">${c.source || 'enriched'}</span></td>
+                        <td style="width: 10%;">${c.is_verified ? 'Yes' : 'No'}</td>
+                        <td style="width: 26%;">${c.created_at ? new Date(c.created_at).toLocaleDateString() : '-'}</td>
                     </tr>
                 `).join('');
             }
+            const start = (contactsPage - 1) * 2000 + 1;
+            const end = Math.min(contactsPage * 2000, contactsTotal);
+            document.getElementById('contacts-page-info').textContent =
+                `Showing ${start}–${end} of ${contactsTotal.toLocaleString()} contacts`;
+            document.getElementById('contacts-prev').disabled = contactsPage <= 1;
+            document.getElementById('contacts-next').disabled = contactsPage >= contactsPages;
+        }
+
+        async function showContactsModal(initialFilter = '') {
+            document.getElementById('contacts-modal').classList.add('active');
+            document.getElementById('contacts-search').value = '';
+            contactsSearch = '';
+            contactsSource = '';
+            document.getElementById('contacts-source-filter').value = '';
+            contactsPage = 1;
+            if (initialFilter) {
+                document.getElementById('contacts-filter').value = initialFilter;
+                contactsStatus = initialFilter;
+            } else {
+                contactsStatus = '';
+                document.getElementById('contacts-filter').value = '';
+            }
+            await fetchContacts();
+        }
+
+        function prevContactsPage() {
+            if (contactsPage > 1) { contactsPage--; fetchContacts(); }
+        }
+
+        function nextContactsPage() {
+            if (contactsPage < contactsPages) { contactsPage++; fetchContacts(); }
         }
         
         let allJobs = [];

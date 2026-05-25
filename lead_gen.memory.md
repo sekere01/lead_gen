@@ -1132,10 +1132,14 @@ Verifier (03_verification/main.py)
 | `utils/email_utils.py:212` | Fixed `is_valid_tld` to receive only domain portion, not full email |
 | `01_discovery/main.py` | Timezone-aware `datetime.now(timezone.utc)` everywhere |
 
-### Outstanding (low priority — not fixed):
-- `services/regional_scoring.py:158-160` — arithmetic break condition (logic still correct but fragile)
-- `services/commoncrawl.py:164` — non-thread-safe `seen_domains` set (mitigated by GIL)
-- `scripts/reconcile_stats.py:43-56` — `valid_statuses` keys never wired up
-- All services — logger/handler level mismatch (DEBUG logger, INFO handlers — cosmetic)
-- `api/v1/endpoints/companies.py:32-38` — silent error swallowing (returns `[]` on error)
-- `api/v1/endpoints/contacts.py:183-186` — rate-limit DNS verification pool
+### Round 2 Fixes (commit `fa7f182`, 2026-05-25) ✅
+| # | File | Fix |
+|---|------|-----|
+| 1 | `services/regional_scoring.py:158-160` | Replaced `score % 2 == 0` arithmetic break with boolean `found_city` flag |
+| 2 | `services/commoncrawl.py:164` | Added `threading.Lock` around `seen_domains` check-then-add in multi-threaded TLD queries |
+| 3 | `api/v1/endpoints/companies.py:32-38` | Changed `return []` to `raise HTTPException(500)` so clients can distinguish error from empty |
+| 4 | `api/v1/endpoints/contacts.py:207,353` | Reduced `_MAX_WORKERS` from 10→5, added `await asyncio.sleep(0.5)` between batch chunks for DNS rate limiting |
+| 5 | `scripts/reconcile_stats.py:43-56` | Wired `valid_statuses` into SQL `WHERE` clause |
+| 6 | All 4 service `main.py` files | Changed `logger.setLevel(logging.DEBUG)` → `logging.INFO` to match handler levels |
+
+### No outstanding issues remain.

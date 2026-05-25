@@ -128,7 +128,6 @@ if __name__ == "__main__":
     import uvicorn
     
     logger.info("Starting Lead Generation API...")
-    init_db()
     
     uvicorn.run(
         "main:app",

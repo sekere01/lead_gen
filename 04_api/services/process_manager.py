@@ -203,17 +203,17 @@ class ProcessManager:
             # Stale lock removed - try again
             try:
                 fd = os.open(lock_file, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
-                os.write(fd, str(os.getpid()).encode())
+                os.write(fd, b'0')
                 os.close(fd)
             except Exception:
                 return {'success': False, 'error': f'Could not acquire lock for {service_name}'}
         
         try:
-            # Kill any existing orphan process by script name
+            # Kill any existing orphan process by script name (SIGTERM first, then SIGKILL)
             try:
                 subprocess.run(
-                    ['/usr/bin/pkill', '-9', '-f', config['script']],
-                    capture_output=True
+                    ['/usr/bin/pkill', '-15', '-f', config['script']],
+                    capture_output=True, timeout=3
                 )
             except Exception:
                 pass
@@ -221,8 +221,28 @@ class ProcessManager:
             # Also kill by main.py pattern
             try:
                 subprocess.run(
+                    ['/usr/bin/pkill', '-15', '-f', f"{config['service_dir']}/venv/bin/python main.py"],
+                    capture_output=True, timeout=3
+                )
+            except Exception:
+                pass
+            
+            # Give processes time to exit gracefully
+            import time as _time
+            _time.sleep(2)
+            
+            # Force kill any remaining with SIGKILL
+            try:
+                subprocess.run(
+                    ['/usr/bin/pkill', '-9', '-f', config['script']],
+                    capture_output=True, timeout=3
+                )
+            except Exception:
+                pass
+            try:
+                subprocess.run(
                     ['/usr/bin/pkill', '-9', '-f', f"{config['service_dir']}/venv/bin/python main.py"],
-                    capture_output=True
+                    capture_output=True, timeout=3
                 )
             except Exception:
                 pass

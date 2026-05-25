@@ -18,6 +18,5 @@ class DiscoveryJob(Base):
     last_error = Column(Text)
     last_run = Column(DateTime)
     last_heartbeat = Column(DateTime)
-    error_message = Column(String(500))
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))

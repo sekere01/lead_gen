@@ -10,7 +10,9 @@ load_dotenv(env_path)
 
 
 class Settings:
-    DATABASE_URL: str = os.getenv("DATABASE_URL")  # REQUIRED - no default
+    DATABASE_URL: str = os.getenv("DATABASE_URL")
+    if not DATABASE_URL:
+        raise ValueError("DATABASE_URL environment variable is required")
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")  # Celery broker
     API_HOST: str = os.getenv("API_HOST", "0.0.0.0")
     API_PORT: int = int(os.getenv("API_PORT", "8000"))

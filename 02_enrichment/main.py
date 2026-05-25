@@ -11,7 +11,7 @@ import asyncio
 import logging
 import logging.handlers
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Tuple, Dict, Any, Set
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -79,7 +79,7 @@ EXPLICIT_PAGES = [
 
 def update_heartbeat(company, db) -> None:
     """Update company heartbeat timestamp."""
-    company.last_heartbeat = datetime.now()
+    company.last_heartbeat = datetime.now(timezone.utc)
     db.commit()
 
 
@@ -182,9 +182,15 @@ async def fetch_page_async(client: httpx.AsyncClient, url: str, headers: dict) -
         return (url, "")
 
 
+_fetch_semaphore = asyncio.Semaphore(20)
+
+
 async def _extract_async(client, urls: List[str], headers: dict, target: int) -> List[Tuple[str, str]]:
-    """Async helper to fetch multiple pages."""
-    tasks = [fetch_page_async(client, url, headers) for url in urls]
+    """Async helper to fetch multiple pages with concurrency limit."""
+    async def bounded_fetch(url):
+        async with _fetch_semaphore:
+            return await fetch_page_async(client, url, headers)
+    tasks = [bounded_fetch(url) for url in urls]
     results = await asyncio.gather(*tasks)
     return results
 
@@ -229,10 +235,7 @@ def extract_emails_from_pages(domain: str, hosts: List[str], target: int) -> Lis
     try:
         results = asyncio.run(_extract_async(httpx.AsyncClient(http2=True), urls_to_fetch, headers, target))
     except Exception:
-        try:
-            results = asyncio.run(_extract_async(httpx.AsyncClient(), urls_to_fetch, headers, target))
-        except ImportError:
-            results = asyncio.run(_extract_async(httpx.Client(), urls_to_fetch, headers, target))
+        results = asyncio.run(_extract_async(httpx.AsyncClient(), urls_to_fetch, headers, target))
     
     for url, text in results:
         if text and len(all_emails) < target:
@@ -341,16 +344,16 @@ def save_emails_incremental(company_id: int, emails: List[str], email_type: str,
         logger.info(f"Incremental save: {saved_count} emails saved ({email_type})")
     except Exception as e:
         logger.warning(f"Bulk save failed, trying one by one: {e}")
-        db.rollback()  # E1: Clear poisoned transaction
+        db.rollback()
         for i, contact_data in enumerate(contacts_to_insert):
             try:
-                contact = Contact(**contact_data)
-                db.add(contact)
-                email_record = ExtractedEmail(**emails_to_insert[i])
-                db.add(email_record)
-                db.commit()  # E1: Commit each individually
+                with db.begin_nested():
+                    contact = Contact(**contact_data)
+                    db.add(contact)
+                    email_record = ExtractedEmail(**emails_to_insert[i])
+                    db.add(email_record)
+                db.commit()
             except Exception:
-                db.rollback()  # E1: Skip duplicate, continue with next
                 logger.debug(f"Skipped duplicate: {contact_data.get('email')}")
     
     return saved_count
@@ -370,7 +373,7 @@ def process_company(company) -> bool:
             return False
             
         company.status = 'enriching'
-        company.last_heartbeat = datetime.now()
+        company.last_heartbeat = datetime.now(timezone.utc)
         db.commit()
         
         # Refresh to get database-backed object
@@ -422,8 +425,8 @@ def process_company(company) -> bool:
             if time.time() - start_time > DOMAIN_TIMEOUT:
                 failure_reasons.append("timeout before explicit pages")
             else:
-                hosts = [] if not all_emails else [domain]
-                emails = extract_emails_from_pages(domain, hosts, TARGET_EMAILS - len(all_emails))
+                page_hosts = [h for h in hosts if h] if hosts else [domain]
+                emails = extract_emails_from_pages(domain, page_hosts, TARGET_EMAILS - len(all_emails))
                 
                 new_emails = [e for e in emails if e.lower() not in [e2.lower() for e2 in all_emails]]
                 for email in new_emails:
@@ -521,7 +524,7 @@ def process_company(company) -> bool:
 
 def watchdog_reset_stuck_companies(db) -> int:
     """Watchdog: Reset companies stuck in 'enriching' for too long."""
-    cutoff_time = datetime.now() - timedelta(minutes=WATCHDOG_MINUTES)
+    cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=WATCHDOG_MINUTES)
     
     stuck_companies = db.query(Company).filter(
         Company.status == 'enriching',
@@ -534,11 +537,11 @@ def watchdog_reset_stuck_companies(db) -> int:
         company.retry_count = old_retry + 1
         
         # Two-phase retry: browsed → enrich_requeued → failed
-        if company.status == 'enrich_requeued' and company.retry_count >= MAX_RETRIES_PHASE2:
+        if company.retry_count >= MAX_RETRIES + MAX_RETRIES_PHASE2:
             company.status = 'failed'
-            company.failure_reason = f"Watchdog: stuck >{WATCHDOG_MINUTES}min, phase 2 exhausted"
-            logger.error(f"Company {company.domain} permanently failed: phase 2 exhausted")
-        elif company.status == 'browsed' and company.retry_count >= MAX_RETRIES:
+            company.failure_reason = f"Watchdog: stuck >{WATCHDOG_MINUTES}min, all phases exhausted"
+            logger.error(f"Company {company.domain} permanently failed: retries exhausted")
+        elif company.retry_count >= MAX_RETRIES:
             company.status = 'enrich_requeued'
             company.retry_count = 0
             company.failure_reason = f"Watchdog: stuck >{WATCHDOG_MINUTES}min, phase 1 exhausted"

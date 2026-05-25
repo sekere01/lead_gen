@@ -25,9 +25,11 @@ SOCIAL_DOMAINS = [
 ]
 
 # Parked domain patterns
+# More specific patterns to reduce false positives on legitimate sites
 PARKED_PATTERNS = [
-    'domain for sale', 'domain is available', 'coming soon',
-    'parked at', 'registrar', 'renew now', 'this domain may be for sale'
+    'domain for sale', 'domain is available',
+    'parked at', 'this domain may be for sale',
+    'buy this domain', 'domain parked',
 ]
 
 # Address regex patterns

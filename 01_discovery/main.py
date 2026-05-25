@@ -55,7 +55,7 @@ WATCHDOG_TIMEOUT_MINUTES = 30
 
 def update_heartbeat(job, db) -> None:
     """Update job heartbeat timestamp."""
-    job.last_heartbeat = datetime.now()
+    job.last_heartbeat = datetime.now(timezone.utc)
     db.commit()
 
 
@@ -127,6 +127,7 @@ def save_batch_incremental(job_id: int, batch: List[Dict[str, Any]], db) -> int:
         logger.info(f"Batch upsert completed: {saved_count} companies processed")
     except Exception as e:
         logger.error(f"Batch upsert failed: {e}")
+        db.rollback()
         for company_data in batch:
             try:
                 existing = db.query(Company).filter(Company.domain == company_data['domain']).first()
@@ -150,8 +151,8 @@ def save_batch_incremental(job_id: int, batch: List[Dict[str, Any]], db) -> int:
 def process_job(job, db) -> bool:
     """Process a single discovery job with heartbeat and incremental saves."""
     job.status = 'processing'
-    job.last_run = datetime.now()
-    job.last_heartbeat = datetime.now()
+    job.last_run = datetime.now(timezone.utc)
+    job.last_heartbeat = datetime.now(timezone.utc)
     db.commit()
 
     saved_count = 0
@@ -260,7 +261,7 @@ def watchdog_reset_stuck_jobs(db) -> int:
     Checks both last_heartbeat and last_run for safety.
     Returns count of reset jobs.
     """
-    cutoff_time = datetime.now() - timedelta(minutes=WATCHDOG_TIMEOUT_MINUTES)
+    cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=WATCHDOG_TIMEOUT_MINUTES)
 
     stuck_jobs = db.query(DiscoveryJob).filter(
         DiscoveryJob.status == 'processing',
@@ -359,8 +360,8 @@ def run_discoverer():
                 
                 update_job_stats(db, 'discovery', 'pending', -1, job.id)
                 job.status = 'processing'
-                job.last_run = datetime.now()
-                job.last_heartbeat = datetime.now()
+                job.last_run = datetime.now(timezone.utc)
+                job.last_heartbeat = datetime.now(timezone.utc)
                 db.commit()
                 update_job_stats(db, 'discovery', 'processing', 1, job.id)
                 process_job(job, db)

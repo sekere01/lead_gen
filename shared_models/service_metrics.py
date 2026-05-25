@@ -9,7 +9,7 @@ class ServiceMetrics(Base):
     """Service metrics for monitoring pipeline health."""
     __tablename__ = "service_metrics"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True)
     service = Column(String(50), nullable=False, index=True)
     metric = Column(String(50), nullable=False)
     value = Column(Integer)

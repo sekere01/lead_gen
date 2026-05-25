@@ -60,6 +60,14 @@ def _ensure_indexes():
 def _migrate_missing_columns():
     """Add any columns that may be missing from existing databases."""
     from sqlalchemy import text
+    
+    allowed_tables = {'companies', 'discovery_jobs', 'job_stats', 'contacts', 'contact'}
+    allowed_columns = {
+        'browse_heartbeat', 'has_contact_link', 'has_address', 'has_social_links',
+        'has_email_on_homepage', 'is_parked', 'language_match', 'last_heartbeat',
+        'last_job_id', 'job_id', 'source',
+    }
+    
     with engine.connect() as conn:
         columns_to_add = [
             ("companies", "browse_heartbeat", "TIMESTAMP WITH TIME ZONE"),
@@ -76,6 +84,8 @@ def _migrate_missing_columns():
             ("contacts", "source", "VARCHAR(50)"),
         ]
         for table, column, col_type in columns_to_add:
+            if table not in allowed_tables or column not in allowed_columns:
+                continue
             try:
                 conn.execute(text(f"""
                     DO $$

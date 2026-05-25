@@ -65,3 +65,10 @@ htmlcov/
 
 # Project Memory
 *.memory.md
+
+# Config with secrets
+sudoers_leadgen
+nginx_config_updated.conf
+
+# Scripts output
+pipeline.log

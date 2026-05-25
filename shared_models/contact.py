@@ -26,7 +26,7 @@ class Contact(Base):
     source_url = Column(Text)
     company_id = Column(Integer, ForeignKey("companies.id"), nullable=False, index=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 
 class ExtractedEmail(Base):

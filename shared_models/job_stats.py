@@ -1,5 +1,5 @@
 """Shared JobStats model and canonical update_job_stats function."""
-from sqlalchemy import Column, Integer, String, DateTime
+from sqlalchemy import Column, Integer, String, DateTime, UniqueConstraint
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone
 
@@ -8,6 +8,9 @@ from shared_models import Base
 
 class JobStats(Base):
     __tablename__ = "job_stats"
+    __table_args__ = (
+        UniqueConstraint('job_type', 'status', name='uq_job_stats_type_status'),
+    )
 
     id = Column(Integer, primary_key=True)
     job_type = Column(String(20), nullable=False, index=True)

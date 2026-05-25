@@ -21,7 +21,12 @@ if [ -f "$PID_FILE" ]; then
     rm -f "$PID_FILE"
 fi
 
-pkill -f "python.*03_verification" 2>/dev/null
+# Kill any leftover process from a previous run
+if [ -f "$PID_FILE" ]; then
+    OLD_PID=$(cat "$PID_FILE")
+    kill -0 "$OLD_PID" 2>/dev/null && kill -15 "$OLD_PID" 2>/dev/null
+    rm -f "$PID_FILE"
+fi
 sleep 1
 
 export PYTHONPATH="$PROJECT_ROOT"

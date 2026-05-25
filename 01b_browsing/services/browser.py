@@ -7,7 +7,7 @@ from typing import Tuple, Optional
 from contextlib import contextmanager
 from config import settings
 from shared_models.company import Company
-from shared_models import Base
+from utils.email_utils import clean_emails
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +55,11 @@ class BrowserContext:
     def __enter__(self):
         from playwright.sync_api import sync_playwright
         self.playwright = sync_playwright().__enter__()
-        self.browser = self.playwright.chromium.launch(headless=True)
+        try:
+            self.browser = self.playwright.chromium.launch(headless=True)
+        except Exception as e:
+            logger.error(f"Failed to launch Chromium: {e}")
+            raise
         return self
 
     def __exit__(self, *args):
@@ -203,12 +207,7 @@ def browse_homepage(domain: str, db=None, company_id: int = None) -> str:
 
 
 def extract_emails_from_html(html: str) -> list:
-    """Extract email addresses from HTML."""
-    import re
-    
+    """Extract and clean email addresses from HTML using full validation pipeline."""
     email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
-    emails = re.findall(email_pattern, html)
-    
-    # Dedupe and lowercase
-    unique = list(set(e.lower() for e in emails if '@' in e))
-    return unique
+    raw_emails = re.findall(email_pattern, html)
+    return clean_emails(raw_emails)

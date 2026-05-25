@@ -133,11 +133,14 @@ def process_company(company_id: int) -> bool:
                     company.retry_count = 0
                     company.failure_reason = f'Phase 1 exhausted, moving to phase 2'
                     logger.warning(f"Company {domain} moved to phase 2 (requeued)")
+                elif company.status == 'requeued':
+                    company.status = 'discovered'
+                    company.failure_reason = f'No content fetched (phase 2 attempt {company.retry_count}/{MAX_RETRIES_PHASE2})'
+                    logger.warning(f"Company {domain} retrying phase 2: attempt {company.retry_count}")
                 else:
-                    company.status = 'browsed'
-                    company.discovery_score = 1
+                    company.status = 'discovered'
                     company.failure_reason = f'No content fetched (attempt {company.retry_count}/{MAX_RETRIES})'
-                    logger.warning(f"Company {domain}: no content marked browsed with score 1")
+                    logger.warning(f"Company {domain} retrying phase 1: attempt {company.retry_count}")
                 db.commit()
                 return False
             
@@ -200,6 +203,9 @@ def process_company(company_id: int) -> bool:
             elif company.status in ('discovered', 'browsing'):
                 company.status = 'discovered'
                 company.failure_reason = f'Processing error: {str(e)[:100]}'
+            elif company.status == 'requeued':
+                company.status = 'discovered'
+                company.failure_reason = f'Processing error phase 2: {str(e)[:100]}'
             
             db.commit()
             return False
@@ -231,11 +237,14 @@ def watchdog_reset_stuck_companies(db) -> int:
             company.retry_count = 0
             company.failure_reason = f'Watchdog: stuck >{WATCHDOG_MINUTES}min, phase 1 exhausted'
             logger.warning(f"Company {company.domain} moved to phase 2 (requeued)")
+        elif company.status == 'requeued':
+            company.status = 'discovered'
+            company.failure_reason = f'Watchdog: stuck >{WATCHDOG_MINUTES}min, phase 2 retry'
+            logger.warning(f"Company {company.domain} retrying phase 2 from watchdog")
         else:
-            company.status = 'browsed'
-            company.discovery_score = 1
-            company.failure_reason = f'Watchdog: stuck >{WATCHDOG_MINUTES}min, marked browsed'
-            logger.warning(f"Company {company.domain} marked browsed (score 1) due to stuck state")
+            company.status = 'discovered'
+            company.failure_reason = f'Watchdog: stuck >{WATCHDOG_MINUTES}min, phase 1 retry'
+            logger.warning(f"Company {company.domain} retrying phase 1 from watchdog")
         
         company.browse_heartbeat = None
         
@@ -335,5 +344,9 @@ if __name__ == "__main__":
     print("=" * 50)
     print("Browsing Service Starting...")
     print("=" * 50)
-    init_db()
+    try:
+        init_db()
+    except Exception as e:
+        logger.critical(f"Database initialization failed: {e}")
+        raise
     run_browser()

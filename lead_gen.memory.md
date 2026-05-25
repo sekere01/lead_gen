@@ -927,3 +927,123 @@ Verifier (03_verification/main.py)
 - Full re-render path saves/restores pulsing keys (lines 1623-1625, 1650-1654)
 - All three service action buttons disabled during transition, re-enabled+reshuffled via `reshuffle()` only after target status confirmed (lines 1822-1910+)
 - "Already in progress" path: stop → wait → start → poll (lines 1849-1888)
+
+## Full Project Bug Audit (2026-05-25)
+
+### Summary — 133 issues across 6 service areas
+
+| Area | CRITICAL | HIGH | MEDIUM | LOW | Total |
+|------|----------|------|--------|-----|-------|
+| 01_discovery | 1 | 3 | 9 | 6 | 19 |
+| 01b_browsing | 1 | 2 | 7 | 15 | 25 |
+| 02_enrichment | 3 | 5 | 10 | 6 | 24 |
+| 03_verification | 2 | 3 | 9 | 6 | 20 |
+| 04_api | 2 | 5 | 17 | 8 | 32 |
+| shared_models/utils/scripts | 1 | 4 | 3 | 5 | 13 |
+| **Total** | **10** | **22** | **55** | **46** | **133** |
+
+### Phase 0: Security & Infrastructure
+
+| # | File | Fix |
+|---|------|-----|
+| 1 | All service `.env` files | Remove from git, add `*.env` to `.gitignore`, rotate DB password |
+| 2 | `02_enrichment/.env`, `03_verification/.env` | Verify they're also un-tracked |
+| 3 | `.gitignore` | Add `*.env`, `venv/`, `__pycache__/`, `*.pyc`, `.DS_Store`, `logs/*.log` |
+
+### Phase 1: Database Models
+
+| # | File:Line | Sev | Fix |
+|---|-----------|-----|-----|
+| 4 | `shared_models/job_stats.py:19-20` | CRITICAL | Add `UniqueConstraint('job_type', 'status', name='uq_job_stats_type_status')` to `JobStats` table args |
+| 5 | `shared_models/contact.py:23` | HIGH | Add `default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc)` to `updated_at` |
+| 6 | `shared_models/company.py:30` | HIGH | Same — add `default`/`onupdate` to `updated_at` |
+| 7 | `shared_models/discovery_job.py:14` | HIGH | Same — add `default`/`onupdate` to `updated_at` |
+| 8 | `shared_models/discovery_job.py:11,13` | HIGH | Remove redundant `error_message` column (keep only `last_error`) |
+| 9 | `shared_models/service_metrics.py:9` | LOW | Remove redundant `index=True` on PK `id` |
+
+### Phase 2: Verification Service (03_verification)
+
+| # | File:Line | Sev | Fix |
+|---|-----------|-----|-----|
+| 10 | `main.py:119` | CRITICAL | Add `api_base` param/config so `write_metrics()` doesn't throw `NameError` |
+| 11 | `main.py:119` | MEDIUM | Switch `httpx.post(...)` to use persistent `_http_client` |
+| 12 | `main.py:165-178` | MEDIUM | Remove redundant re-query for `total_pending` |
+| 13 | `main.py:229-245` | MEDIUM | Add `return` after `db.rollback()` to skip stale check |
+| 14 | `config.py:13` | MEDIUM | Add `if not DATABASE_URL: raise ValueError(...)` |
+| 15 | `services/email_verify.py:127` | HIGH | Change `"valid_verified"` → `"verified"` to match API |
+| 16 | `services/verification.py` | MEDIUM | Remove dead code file (128 lines, unused) |
+| 17 | `run_verification.sh:24` | MEDIUM | Replace broad `pkill` with PID-file kill |
+
+### Phase 3: Browsing Service (01b_browsing)
+
+| # | File:Line | Sev | Fix |
+|---|-----------|-----|-----|
+| 18 | `main.py:126-141` | CRITICAL | Empty HTML with retries left → set `discovered` not `browsed` |
+| 19 | `main.py:188-205` | HIGH | Add `elif` for `requeued` + non-exhausted retries |
+| 20 | `services/browser.py:205-213` | HIGH | Use `signal_extractor.py` version with full `clean_emails()` |
+| 21 | `services/signal_extractor.py:29-30` | MEDIUM | Tighten overbroad parked-domain patterns |
+| 22 | `services/browser.py:50-68` | MEDIUM | Add error handling around `chromium.launch()` |
+| 23 | `main.py:338-339` | MEDIUM | Wrap `init_db()` in try/except |
+
+### Phase 4: Enrichment Service (02_enrichment)
+
+| # | File:Line | Sev | Fix |
+|---|-----------|-----|-----|
+| 24 | `main.py:202-203` | CRITICAL | Remove broken `asyncio.run(httpx.Client())` fallback |
+| 25 | `main.py:439-452` | CRITICAL | Fix watchdog: check `retry_count >= MAX_RETRIES` |
+| 26 | `main.py:268-271` | HIGH | Fix rollback losing prior saves — use SAVEPOINT |
+| 27 | `main.py:52,293` | HIGH | Replace `datetime.now()` with timezone-aware |
+| 28 | `main.py:335-336` | HIGH | Pass actual harvester subdomains |
+| 29 | `config.py:12` | HIGH | Add `DATABASE_URL` guard |
+| 30 | `services/harvester_api.py` | MEDIUM | Remove dead code |
+| 31 | `services/email_extractor.py` | MEDIUM | Remove dead code |
+| 32 | `main.py:186-190` | MEDIUM | Add Semaphore to limit parallel fetches |
+
+### Phase 5: Discovery Service (01_discovery)
+
+| # | File:Line | Sev | Fix |
+|---|-----------|-----|-----|
+| 33 | `main.py:155-177` | CRITICAL | Rollback before fallback or remove dead fallback |
+| 34 | `requirements.txt` | HIGH | Add `httpx>=0.24.0` |
+| 35 | `main.py:125,128` | HIGH | Remove duplicate CommonCrawl call |
+| 36 | `main.py:64,213,266,357` | MEDIUM | Use `datetime.now(timezone.utc)` everywhere |
+| 37 | `services/regional_scoring.py:158-160` | MEDIUM | Boolean flag instead of arithmetic break |
+| 38 | `services/commoncrawl.py:164` | MEDIUM | Add Lock around `seen_domains` |
+
+### Phase 6: API Service (04_api)
+
+| # | File:Line | Sev | Fix |
+|---|-----------|-----|-----|
+| 39 | `templates/dashboard.html:23` | CRITICAL | Fix CSS `});` → `}` to close `:root` |
+| 40 | `templates/dashboard.html:2164` | HIGH | Fix `showTab()` missing `event` param |
+| 41 | `templates/dashboard.html:2588` | MEDIUM | Remove duplicate metrics `setInterval` |
+| 42 | `templates/dashboard.html:2582-2584` | MEDIUM | Fix WS/HTTP polling race |
+| 43 | `config.py:13` | CRITICAL | Add `DATABASE_URL` guard |
+| 44 | `main.py:37,131` | MEDIUM | Remove redundant `init_db()` call |
+| 45 | `services/process_manager.py:213` | HIGH | SIGTERM first, SIGKILL fallback |
+| 46 | `services/process_manager.py:129` | MEDIUM | Fix lock file PID |
+| 47 | `database.py:69-76` | HIGH | Use SQLAlchemy DDL not f-string SQL |
+| 48 | `requirements.txt` | MEDIUM | Add `email-validator`, `disposable-email-domains` |
+| 49 | `api/v1/endpoints/companies.py:32-38` | MEDIUM | Differentiate error from empty |
+| 50 | `api/v1/endpoints/contacts.py:183-186` | HIGH | Rate-limit DNS verification pool |
+
+### Phase 7: Cleanup & Polish
+
+| # | File:Line | Sev | Fix |
+|---|-----------|-----|-----|
+| 51 | `utils/email_utils.py:113-118` | MEDIUM | Fix dead code in `is_placeholder_email` |
+| 52 | `utils/email_utils.py:120-148` | MEDIUM | Check domain only in `is_valid_tld` |
+| 53 | `scripts/reconcile_stats.py:43-56` | MEDIUM | Wire up `valid_statuses` or remove |
+| 54 | All services — logger level | MEDIUM | Normalize logger+handler to same level |
+| 55 | All services — `datetime.now()` | MEDIUM | Audit all naive datetimes to timezone-aware |
+
+### Priority Execution Order
+
+1. **Phase 0** — Security (password leak in git)
+2. **Phase 1** — Models (upstream schema, everything depends on it)
+3. **Phase 2** — Verification (actively broken — `write_metrics` crashes)
+4. **Phase 3** — Browsing (empty-HTML bug losing companies)
+5. **Phase 4** — Enrichment (watchdog never escalates)
+6. **Phase 5** — Discovery (transaction bug, missing dep)
+7. **Phase 6** — API (CSS crash, JS ReferenceError)
+8. **Phase 7** — Cleanup (consistency pass)

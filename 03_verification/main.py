@@ -107,6 +107,7 @@ def write_metrics(db):
             )
         ).count()
         
+        api_base_url = os.getenv('API_BASE', 'http://localhost:8000/api/v1')
         metrics = [
             ('verification', 'contacts_total', contacts_total),
             ('verification', 'verified_count', verified_count),
@@ -116,8 +117,8 @@ def write_metrics(db):
         
         for svc, metric, value in metrics:
             try:
-                httpx.post(
-                    f"{api_base}/dashboard/metrics",
+                _http_client.post(
+                    f"{api_base_url}/dashboard/metrics",
                     json={"service": svc, "metric": metric, "value": value},
                     timeout=5.0,
                 )
@@ -169,13 +170,8 @@ def run_verifier():
                     )
                 ).limit(200).all()
                 
-                if not total_pending:
-                    total_pending = db.query(Contact).filter(
-                        or_(
-                            Contact.verification_status == 'pending',
-                            Contact.verification_status.is_(None)
-                        )
-                    ).count()
+                if not total_pending and contacts:
+                    total_pending = len(contacts)
                 
                 if contacts:
                     logger.info(f"Found {len(contacts)} contacts to verify")
@@ -239,6 +235,7 @@ def run_verifier():
                         except Exception as e:
                             logger.error(f"Batch update failed: {e}")
                             db.rollback()
+                            return
                     
                     # Update company verification status
                     for company_id in processed_companies:

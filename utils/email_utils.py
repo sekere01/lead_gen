@@ -87,7 +87,7 @@ def is_noise_email(email: str) -> bool:
 def is_placeholder_email(email: str) -> bool:
     """
     Check if email is a placeholder.
-    Rejects: exact placeholder domains, OR generic local + placeholder domain.
+    Rejects any email using a known placeholder domain.
     Allows: generic local parts with real domains (e.g., noreply@realcompany.com).
     """
     if '@' not in email:
@@ -96,10 +96,6 @@ def is_placeholder_email(email: str) -> bool:
     
     # Reject if domain is a placeholder domain
     if domain in PLACEHOLDER_DOMAINS:
-        return True
-    
-    # Reject if generic local part AND placeholder domain (the AND condition)
-    if local_part in GENERIC_LOCAL_PARTS and domain in PLACEHOLDER_DOMAINS:
         return True
     
     return False
@@ -213,8 +209,8 @@ def clean_emails(raw_emails: List[str]) -> List[str]:
         parts = lower_email.split('.')
         if len(parts) >= 2:
             tld = parts[-1]
-            full_domain = lower_email
-            if not is_valid_tld(tld, full_domain):
+            domain_part = lower_email.split('@')[1] if '@' in lower_email else lower_email
+            if not is_valid_tld(tld, domain_part):
                 repaired = repair_concatenated_tld(email)
                 if repaired and is_valid_tld(repaired.split('@')[1].split('.')[-1], repaired):
                     valid_emails.add(repaired.lower())

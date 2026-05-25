@@ -124,6 +124,6 @@ def verify_email_fast(email: str) -> Dict[str, Any]:
 
     # MX exists + syntax valid → verified (disposable is informational only)
     result["is_verified"] = True
-    result["verification_status"] = "valid_verified"
+    result["verification_status"] = "verified"
     
     return result

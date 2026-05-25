@@ -204,7 +204,7 @@ class BatchVerifyJob(BaseModel):
 
 
 _BATCH_SIZE = 200
-_MAX_WORKERS = 10
+_MAX_WORKERS = 5
 verify_jobs: Dict[str, dict] = {}
 
 
@@ -350,7 +350,7 @@ async def _run_batch_verify(job_id: str):
                 "failed_count": job["failed_count"],
             })
 
-            await asyncio.sleep(0)
+            await asyncio.sleep(0.5)
 
         if job["status"] != "cancelled":
             job["status"] = "completed"

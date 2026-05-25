@@ -55,10 +55,17 @@ def reconcile():
             job_type = rule['job_type']
             source_table = rule['source_table']
             status_column = rule['status_column']
+            valid_statuses = rule.get('valid_statuses')
+
+            where_clause = ""
+            if valid_statuses:
+                status_list = ", ".join(f"'{s}'" for s in valid_statuses)
+                where_clause = f"WHERE {status_column} IN ({status_list})"
 
             query = text(f"""
                 SELECT {status_column}, COUNT(*) as cnt
                 FROM {source_table}
+                {where_clause}
                 GROUP BY {status_column}
             """)
             results = db.execute(query).fetchall()

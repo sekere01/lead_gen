@@ -1,13 +1,14 @@
 """CommonCrawl discovery module."""
 import json
 import logging
+import os
 import requests
+import threading
 import time
+import yaml
 from typing import List, Dict, Any, Optional
 from urllib.parse import urlparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import yaml
-import os
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +115,7 @@ def discover_commoncrawl(keyword: str, region: str = "", max_results: int = 50,
     """
     results = []
     seen_domains = set()
+    _seen_lock = threading.Lock()
 
     config = _load_config()
 
@@ -202,8 +204,12 @@ def discover_commoncrawl(keyword: str, region: str = "", max_results: int = 50,
                                 url = data.get('url', '')
                                 domain = _extract_domain(url)
 
-                                if domain and domain not in seen_domains:
-                                    seen_domains.add(domain)
+                                is_new = False
+                                with _seen_lock:
+                                    if domain and domain not in seen_domains:
+                                        seen_domains.add(domain)
+                                        is_new = True
+                                if is_new:
                                     tld_results.append({
                                         'domain': domain,
                                         'source': 'commoncrawl',

@@ -170,13 +170,14 @@ def get_global_region_score(domain: str, region: str = "") -> int:
     domain_parts = domain.replace('-', ' ').replace('.', ' ')
     
     # Check against all city keywords
+    found_city = False
     for region_name, cities in city_keywords.items():
         for city in cities:
             if city in domain_parts:
                 score += 2
+                found_city = True
                 break
-        if score > 0 and score % 2 == 0:
-            # Already added city score, break out
+        if found_city:
             break
     
     # Global mode: give +1 for generic TLDs

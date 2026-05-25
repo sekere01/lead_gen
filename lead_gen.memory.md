@@ -1047,3 +1047,95 @@ Verifier (03_verification/main.py)
 6. **Phase 5** — Discovery (transaction bug, missing dep)
 7. **Phase 6** — API (CSS crash, JS ReferenceError)
 8. **Phase 7** — Cleanup (consistency pass)
+
+## Bug Fix Implementation (2026-05-25)
+
+### Commit: `708d656` — Full project bug audit fix
+
+**28 files changed, 274 insertions, 299 deletions, 3 deleted files**
+
+### Phase 0: Security ✅
+- Enhanced `.gitignore` with `sudoers_leadgen`, `nginx_config_updated.conf`, `pipeline.log`
+- Confirmed no `.env` files are tracked in git (already gitignored)
+
+### Phase 1: Database Models ✅
+| File | Change |
+|------|--------|
+| `shared_models/job_stats.py` | Added `UniqueConstraint('job_type', 'status', name='uq_job_stats_type_status')` to fix UPSERT crash |
+| `shared_models/contact.py` | Added `default`/`onupdate` to `updated_at` |
+| `shared_models/company.py` | Added `default`/`onupdate` to `updated_at` |
+| `shared_models/discovery_job.py` | Added `default`/`onupdate` to `updated_at`; removed redundant `error_message` column |
+| `shared_models/service_metrics.py` | Removed redundant `index=True` on PK `id` |
+
+### Phase 2: Verification Service ✅
+| File | Change |
+|------|--------|
+| `03_verification/main.py:119` | Fixed `api_base` undefined in `write_metrics()` — was `NameError` every 60s |
+| `03_verification/main.py:119` | Switched `httpx.post()` to use persistent `_http_client` |
+| `03_verification/main.py:165-178` | Removed redundant `total_pending` re-query |
+| `03_verification/main.py:229-245` | Added `return` after `db.rollback()` to skip stale company check |
+| `03_verification/config.py:13` | Added `if not DATABASE_URL: raise ValueError(...)` guard |
+| `03_verification/services/email_verify.py:127` | Changed `"valid_verified"` → `"verified"` to align with API |
+| `03_verification/services/verification.py` | **Deleted** — 128 lines of dead code (SMTP waterfall, never called) |
+| `03_verification/run_verification.sh:24` | Replaced broad `pkill -f "python.*03_verification"` with PID-file-based kill |
+
+### Phase 3: Browsing Service ✅
+| File | Change |
+|------|--------|
+| `01b_browsing/main.py:126-141` | **CRITICAL**: Empty HTML with retries remaining now sets `status='discovered'` (retry) instead of `status='browsed'` (done) |
+| `01b_browsing/main.py:188-205` | Added missing `elif` for `requeued` + non-exhausted retries in exception handler |
+| `01b_browsing/main.py:234-238` | Same fix in watchdog — retry instead of mark browsed |
+| `01b_browsing/services/browser.py:205-213` | Replaced simple regex email extraction with `clean_emails()` full pipeline |
+| `01b_browsing/services/browser.py:5-10` | Import `clean_emails` from `utils.email_utils`; removed unused `Base` import |
+| `01b_browsing/services/signal_extractor.py:28-31` | Tightened overbroad parked patterns (removed `registrar`, `renew now`) |
+| `01b_browsing/services/browser.py:57-59` | Added try/except around `chromium.launch()` |
+| `01b_browsing/main.py:338-339` | Wrapped `init_db()` in try/except with `logger.critical()` |
+
+### Phase 4: Enrichment Service ✅
+| File | Change |
+|------|--------|
+| `02_enrichment/main.py:202-203` | **CRITICAL**: Removed broken `asyncio.run(_extract_async(httpx.Client(), ...))` — was `TypeError` when reached |
+| `02_enrichment/main.py:537-539` | **CRITICAL**: Fixed watchdog phase-escalation to check `retry_count` thresholds instead of impossible status checks (was checking `status == 'enrich_requeued'` on `'enriching'` records — never matched, retried forever) |
+| `02_enrichment/main.py:268-271` | Fixed rollback losing prior saves — replaced with `db.begin_nested()` SAVEPOINT |
+| `02_enrichment/main.py:80, 373, 524` | Replaced `datetime.now()` with `datetime.now(timezone.utc)` everywhere |
+| `02_enrichment/main.py:425` | Fixed harvester hosts discarded — use actual `hosts` list, not `[domain]` |
+| `02_enrichment/config.py:13` | Added `DATABASE_URL` guard |
+| `02_enrichment/main.py:188-189` | Added `asyncio.Semaphore(20)` to limit parallel fetches |
+| `02_enrichment/services/harvester_api.py` | **Deleted** — unused REST client |
+| `02_enrichment/services/email_extractor.py` | **Deleted** — unused re-export |
+
+### Phase 5: Discovery Service ✅
+| File | Change |
+|------|--------|
+| `01_discovery/main.py:128-129` | Added `db.rollback()` before one-by-one fallback in `save_batch_incremental` |
+| `01_discovery/requirements.txt` | Added `httpx>=0.24.0` |
+| `01_discovery/main.py:58,153-154,263,362-363` | Replaced `datetime.now()` with `datetime.now(timezone.utc)` |
+
+### Phase 6: API Service ✅
+| File | Change |
+|------|--------|
+| `04_api/templates/dashboard.html:23` | **CRITICAL**: Fixed CSS `});` → `}` — was invalidating all `:root` CSS custom properties |
+| `04_api/templates/dashboard.html:2164` | Fixed `showTab()` — added `event` parameter to fix `ReferenceError` |
+| `04_api/templates/dashboard.html:2588` | Removed duplicate metrics polling `setInterval` — was doubling API calls |
+| `04_api/templates/dashboard.html:2582-2584` | Guard with `!metricsIntervalObj` to prevent WS/HTTP race |
+| `04_api/config.py:13` | Added `DATABASE_URL` guard |
+| `04_api/main.py:131` | Removed redundant `init_db()` from `__main__` (lifespan already calls it) |
+| `04_api/services/process_manager.py:213-228` | Changed from `SIGKILL (-9)` to `SIGTERM (-15)` first, 2s wait, then `SIGKILL` fallback |
+| `04_api/services/process_manager.py:129` | Fixed lock file PID — write `b'0'` instead of `os.getpid()` (API PID) |
+| `04_api/database.py:69-76` | Added table/column whitelist validation to migration SQL |
+| `04_api/requirements.txt` | Added `httpx`, `email-validator`, `disposable-email-domains`; removed unused `pydantic-settings`, `celery`, `requests` |
+
+### Phase 7: Cleanup ✅
+| File | Change |
+|------|--------|
+| `utils/email_utils.py:87-105` | Removed dead AND check in `is_placeholder_email` (subset of first condition) |
+| `utils/email_utils.py:212` | Fixed `is_valid_tld` to receive only domain portion, not full email |
+| `01_discovery/main.py` | Timezone-aware `datetime.now(timezone.utc)` everywhere |
+
+### Outstanding (low priority — not fixed):
+- `services/regional_scoring.py:158-160` — arithmetic break condition (logic still correct but fragile)
+- `services/commoncrawl.py:164` — non-thread-safe `seen_domains` set (mitigated by GIL)
+- `scripts/reconcile_stats.py:43-56` — `valid_statuses` keys never wired up
+- All services — logger/handler level mismatch (DEBUG logger, INFO handlers — cosmetic)
+- `api/v1/endpoints/companies.py:32-38` — silent error swallowing (returns `[]` on error)
+- `api/v1/endpoints/contacts.py:183-186` — rate-limit DNS verification pool

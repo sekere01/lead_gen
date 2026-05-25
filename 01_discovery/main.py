@@ -41,7 +41,7 @@ file_handler.setLevel(logging.INFO)
 file_handler.setFormatter(formatter)
 
 logger = logging.getLogger("discoverer")
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 logger.addHandler(stream_handler)
 logger.addHandler(file_handler)
 

@@ -29,7 +29,7 @@ class CompanyResponse(BaseModel):
         from_attributes = True
 
 
-@router.get("")  # response_model removed for error handling
+@router.get("")
 def list_companies(
     status: Optional[str] = Query(None),
     limit: int = Query(100),
@@ -43,7 +43,7 @@ def list_companies(
         return query.order_by(Company.created_at.desc()).limit(limit).all()
     except Exception as e:
         logger.error(f"Error listing companies: {e}")
-        return []
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 
 @router.get("/{company_id}", response_model=CompanyResponse)

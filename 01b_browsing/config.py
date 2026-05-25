@@ -11,8 +11,8 @@ load_dotenv(env_path)
 
 class Settings:
     DATABASE_URL: str = os.getenv("DATABASE_URL")  # REQUIRED - no default
-    DB_POOL_SIZE: int = int(os.getenv("DB_POOL_SIZE", "10"))
-    DB_MAX_OVERFLOW: int = int(os.getenv("DB_MAX_OVERFLOW", "5"))
+    DB_POOL_SIZE: int = int(os.getenv("DB_POOL_SIZE", "5"))
+    DB_MAX_OVERFLOW: int = int(os.getenv("DB_MAX_OVERFLOW", "3"))
     DB_POOL_TIMEOUT: int = int(os.getenv("DB_POOL_TIMEOUT", "10"))
     
     # Polling
@@ -26,6 +26,7 @@ class Settings:
     # Concurrency
     BROWSING_CONCURRENCY_HTTP: int = int(os.getenv("BROWSING_CONCURRENCY_HTTP", "20"))
     BROWSING_CONCURRENCY_PLAYWRIGHT: int = int(os.getenv("BROWSING_CONCURRENCY_PLAYWRIGHT", "5"))
+    BROWSING_WORKERS: int = int(os.getenv("BROWSING_WORKERS", "5"))
     
     # Retry/Watchdog
     BROWSING_WATCHDOG_MINUTES: int = int(os.getenv("BROWSING_WATCHDOG_MINUTES", "15"))

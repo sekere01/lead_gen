@@ -163,15 +163,14 @@ def run_verifier():
         while True:
             db = SessionLocal()
             try:
-                contacts = db.query(Contact).filter(
+                pending_query = db.query(Contact).filter(
                     or_(
                         Contact.verification_status == 'pending',
                         Contact.verification_status.is_(None)
                     )
-                ).limit(200).all()
-                
-                if not total_pending and contacts:
-                    total_pending = len(contacts)
+                )
+                total_pending = pending_query.count()
+                contacts = pending_query.limit(200).all()
                 
                 if contacts:
                     logger.info(f"Found {len(contacts)} contacts to verify")

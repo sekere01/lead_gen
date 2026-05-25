@@ -6,7 +6,7 @@ from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 
 from config import settings
-from shared_models import Company, Contact, JobStats, update_job_stats, Base
+from shared_models import Company, Contact, Base
 
 engine = create_engine(
     settings.DATABASE_URL,

@@ -29,7 +29,7 @@ def process_discovery_job(self, job_id: int):
         logger.error("DATABASE_URL not set")
         return {"error": "DATABASE_URL not set"}
 
-    engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_size=3, max_overflow=2, pool_timeout=10)
+    engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_size=2, max_overflow=1, pool_timeout=10)
     SessionLocal = sessionmaker(bind=engine)
     db = SessionLocal()
 
@@ -100,7 +100,7 @@ def process_browsing(self, company_id: int):
     if not DATABASE_URL:
         return {"error": "DATABASE_URL not set"}
 
-    engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_size=3, max_overflow=2, pool_timeout=10)
+    engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_size=2, max_overflow=1, pool_timeout=10)
     SessionLocal = sessionmaker(bind=engine)
     db = SessionLocal()
 
@@ -161,7 +161,7 @@ def process_enrichment(self, company_id: int):
     if not DATABASE_URL:
         return {"error": "DATABASE_URL not set"}
 
-    engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_size=3, max_overflow=2, pool_timeout=10)
+    engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_size=2, max_overflow=1, pool_timeout=10)
     SessionLocal = sessionmaker(bind=engine)
     db = SessionLocal()
 
@@ -232,7 +232,7 @@ def process_verification(self, contact_id: int):
     if not DATABASE_URL:
         return {"error": "DATABASE_URL not set"}
 
-    engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_size=3, max_overflow=2, pool_timeout=10)
+    engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_size=2, max_overflow=1, pool_timeout=10)
     SessionLocal = sessionmaker(bind=engine)
     db = SessionLocal()
 
@@ -283,7 +283,7 @@ def enqueue_discovery_jobs():
     if not DATABASE_URL:
         return {"error": "DATABASE_URL not set"}
 
-    engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_size=3, max_overflow=2, pool_timeout=10)
+    engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_size=2, max_overflow=1, pool_timeout=10)
     SessionLocal = sessionmaker(bind=engine)
     db = SessionLocal()
 
@@ -329,7 +329,7 @@ def collect_metrics(self):
 
     RETENTION_HOURS = int(os.getenv("METRICS_RETENTION_HOURS", "24"))
 
-    engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_size=3, max_overflow=2, pool_timeout=10)
+    engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_size=2, max_overflow=1, pool_timeout=10)
     SessionLocal = sessionmaker(bind=engine)
     db = SessionLocal()
 

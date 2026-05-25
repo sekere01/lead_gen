@@ -47,7 +47,7 @@ MAX_RETRIES_PHASE2 = settings.BROWSING_MAX_RETRIES_PHASE2
 WATCHDOG_MINUTES = settings.BROWSING_WATCHDOG_MINUTES
 SCORE_MAX = settings.SCORE_MAX
 HEARTBEAT_INTERVAL = settings.HEARTBEAT_INTERVAL
-BROWSING_WORKERS = 20
+BROWSING_WORKERS = settings.BROWSING_WORKERS
 
 
 def update_heartbeat(company, db):
@@ -206,6 +206,41 @@ def process_company(company_id: int) -> bool:
             return False
 
 
+def _cleanup_zombie_browsers():
+    """Kill orphan Chromium processes from stuck browsing workers."""
+    import subprocess
+    try:
+        timeout_sec = settings.BROWSING_TIMEOUT_PLAYWRIGHT + 10
+        result = subprocess.run(
+            ["pgrep", "-f", "chromium"],
+            capture_output=True, text=True, timeout=5
+        )
+        if not result.stdout.strip():
+            return
+        now = __import__("time").time()
+        for pid_str in result.stdout.strip().splitlines():
+            pid = int(pid_str.strip())
+            try:
+                # Check process age via /proc
+                with open(f"/proc/{pid}/stat") as f:
+                    parts = f.read().split()
+                    start_jiffies = int(parts[21])
+                uptime_jiffies = os.sysconf(os.sysconf_names["SC_CLK_TCK"])
+                with open("/proc/stat") as f:
+                    for line in f:
+                        if line.startswith("btime "):
+                            boot_time = int(line.split()[1])
+                            break
+                age = now - (boot_time + start_jiffies / uptime_jiffies)
+                if age > timeout_sec:
+                    os.kill(pid, 9)
+                    logger.warning(f"Killed orphan Chromium PID {pid} (age={age:.0f}s)")
+            except (ProcessLookupError, FileNotFoundError, ValueError, OSError):
+                pass
+    except Exception as e:
+        logger.debug(f"Zombie cleanup check failed: {e}")
+
+
 def watchdog_reset_stuck_companies(db) -> int:
     """Watchdog: Reset companies stuck in browsing for too long."""
     cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=WATCHDOG_MINUTES)
@@ -290,6 +325,7 @@ def run_browser():
         db = SessionLocal()
         try:
             watchdog_reset_stuck_companies(db)
+            _cleanup_zombie_browsers()
             
             # Two-phase: pick up both 'discovered' and 'requeued' companies
             companies = db.query(Company).filter(

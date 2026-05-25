@@ -130,11 +130,36 @@ def run_docker_harvester(domain: str) -> Tuple[List[str], List[str]]:
         volume_path = os.path.abspath(settings.OUTPUT_DIR)
         os.makedirs(volume_path, exist_ok=True)
         
+        sources = settings.HARVESTER_SOURCES
+        # Filter to only supported sources (theHarvester 4.10.1 dropped google/bing)
+        supported = {"baidu", "bevigil", "bitbucket", "brave", "bufferoverun", "builtwith",
+                     "censys", "certspotter", "chaos", "commoncrawl", "criminalip", "crtsh",
+                     "dehashed", "dnsdumpster", "duckduckgo", "dymo", "fofa", "fullhunt",
+                     "github-code", "gitlab", "hackertarget", "haveibeenpwned", "hudsonrock",
+                     "hunter", "hunterhow", "intelx", "leakix", "leaklookup", "mojeek",
+                     "netlas", "onyphe", "otx", "pentesttools", "projectdiscovery", "rapiddns",
+                     "robtex", "rocketreach", "securityscorecard", "securitytrails", "shodan",
+                     "shodanInternetDB", "subdomaincenter", "subdomainfinderc99", "thc",
+                     "threatcrowd", "tomba", "urlscan", "venacus", "virustotal",
+                     "waybackarchive", "whoisxml", "windvane", "yahoo", "zoomeye"}
+        chosen = [s.strip() for s in sources.split(",") if s.strip() in supported]
+        if not chosen:
+            chosen = ["duckduckgo"]
+        source_str = ",".join(chosen)
+
+        # Clean stale output from prior runs
+        for f in ["emails.json", "emails.xml"]:
+            p = os.path.join(volume_path, f)
+            if os.path.exists(p):
+                os.remove(p)
+
         container = client.containers.run(
             "ghcr.io/laramies/theharvester:latest",
-            command=f"-d {domain} -l {settings.HARVESTER_LIMIT} -b google,bing,linkedin,duckduckgo -f /output/emails.json",
+            entrypoint="theHarvester",
+            command=f"-d {domain} -l {settings.HARVESTER_LIMIT} -b {source_str} -f /output/emails.json",
             detach=True,
             remove=True,
+            mem_limit="512m",
             volumes={volume_path: {'bind': '/output', 'mode': 'rw'}},
             environment={"PYTHONUNBUFFERED": "1"}
         )

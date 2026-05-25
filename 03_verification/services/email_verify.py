@@ -29,12 +29,12 @@ def validate_syntax(email: str) -> Tuple[bool, Optional[str]]:
     
     if validate_email:
         try:
-            validation = validate_email(email)
+            validation = validate_email(email, check_deliverability=False)
             return True, None
         except EmailNotValidError as e:
             return False, str(e)
     else:
-        if EMAIL_REGEX.match(email.strip()):
+        if EMAIL_REGEX.fullmatch(email.strip()):
             return True, None
         return False, "invalid_syntax"
 

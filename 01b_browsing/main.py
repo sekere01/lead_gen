@@ -8,7 +8,7 @@ import time
 import logging
 import logging.handlers
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from database import SessionLocal, init_db, Company, Contact, ExtractedEmail
@@ -50,14 +50,9 @@ HEARTBEAT_INTERVAL = settings.HEARTBEAT_INTERVAL
 BROWSING_WORKERS = 20
 
 
-def get_retry_limit(status):
-    """Return max retries allowed for given status."""
-    return MAX_RETRIES_PHASE2 if status == 'requeued' else MAX_RETRIES
-
-
 def update_heartbeat(company, db):
     """Update company browse heartbeat."""
-    company.browse_heartbeat = datetime.now()
+    company.browse_heartbeat = datetime.now(timezone.utc)
     db.commit()
 
 
@@ -107,46 +102,46 @@ def process_company(company_id: int) -> bool:
         company = db.query(Company).filter(Company.id == company_id).first()
         if not company:
             return False
-        
+
         domain = company.domain
+        original_status = company.status
         company.status = 'browsing'
-        company.browse_heartbeat = datetime.now()
+        company.browse_heartbeat = datetime.now(timezone.utc)
         db.commit()
-        
+
         try:
             logger.info(f"Processing {domain}")
-            
+
             # Browse homepage (pass db for heartbeat refresh during long fetches)
             html = browse_homepage(domain, db=db, company_id=company.id)
-            
+
             if not html:
                 company.retry_count = (company.retry_count or 0) + 1
-                retry_limit = get_retry_limit(company.status)
-                
-                # Two-phase retry: discovered → requeued → failed
-                if company.status == 'requeued' and company.retry_count >= MAX_RETRIES_PHASE2:
-                    company.status = 'failed'
-                    company.failure_reason = f'No content fetched after phase 2 ({MAX_RETRIES_PHASE2} attempts)'
-                    logger.warning(f"Company {domain} failed: phase 2 exhausted")
-                elif company.status in ('discovered', 'browsing') and company.retry_count >= MAX_RETRIES:
+
+                if original_status == 'requeued':
+                    if company.retry_count >= MAX_RETRIES_PHASE2:
+                        company.status = 'failed'
+                        company.failure_reason = f'No content fetched after phase 2 ({MAX_RETRIES_PHASE2} attempts)'
+                        logger.warning(f"Company {domain} failed: phase 2 exhausted")
+                    else:
+                        company.status = 'requeued'
+                        company.failure_reason = f'No content fetched (phase 2 attempt {company.retry_count}/{MAX_RETRIES_PHASE2})'
+                        logger.warning(f"Company {domain} retrying phase 2: attempt {company.retry_count}")
+                elif company.retry_count >= MAX_RETRIES:
                     company.status = 'requeued'
                     company.retry_count = 0
-                    company.failure_reason = f'Phase 1 exhausted, moving to phase 2'
+                    company.failure_reason = 'Phase 1 exhausted, moving to phase 2'
                     logger.warning(f"Company {domain} moved to phase 2 (requeued)")
-                elif company.status == 'requeued':
-                    company.status = 'discovered'
-                    company.failure_reason = f'No content fetched (phase 2 attempt {company.retry_count}/{MAX_RETRIES_PHASE2})'
-                    logger.warning(f"Company {domain} retrying phase 2: attempt {company.retry_count}")
                 else:
                     company.status = 'discovered'
                     company.failure_reason = f'No content fetched (attempt {company.retry_count}/{MAX_RETRIES})'
                     logger.warning(f"Company {domain} retrying phase 1: attempt {company.retry_count}")
                 db.commit()
                 return False
-            
+
             # Check for parked
             signals = extract_signals(html, domain)
-            
+
             if signals.get('is_parked'):
                 company.is_parked = True
                 company.discovery_score = 0
@@ -156,22 +151,22 @@ def process_company(company_id: int) -> bool:
                 db.commit()
                 logger.info(f"Company {domain} is parked - filtered out")
                 return True
-            
+
             # Extract emails
             emails = extract_emails_from_html(html)
             if emails:
                 save_emails(company.id, emails, domain, db)
-            
+
             # Calculate score
             base_score = company.discovery_score or 1
             final_score = apply_score(signals, base_score)
-            
+
             # Cap at max
             if final_score > SCORE_MAX:
                 final_score = SCORE_MAX
-            
+
             tier = get_tier(final_score, SCORE_MAX)
-            
+
             # Update company
             company.has_contact_link = signals.get('has_contact_link', False)
             company.has_address = signals.get('has_address', False)
@@ -184,76 +179,71 @@ def process_company(company_id: int) -> bool:
             company.browse_heartbeat = None
             company.last_heartbeat = None
             db.commit()
-            
+
             logger.info(f"Company {domain}: score={final_score} ({tier})")
             return True
-            
+
         except Exception as e:
             logger.error(f"Error processing {domain}: {e}")
             company.retry_count = (company.retry_count or 0) + 1
-            retry_limit = get_retry_limit(company.status)
-            
-            if company.status == 'requeued' and company.retry_count >= MAX_RETRIES_PHASE2:
-                company.status = 'failed'
-                company.failure_reason = str(e)[:450]
-            elif company.status in ('discovered', 'browsing') and company.retry_count >= MAX_RETRIES:
+
+            if original_status == 'requeued':
+                if company.retry_count >= MAX_RETRIES_PHASE2:
+                    company.status = 'failed'
+                    company.failure_reason = str(e)[:450]
+                else:
+                    company.status = 'requeued'
+                    company.failure_reason = f'Processing error phase 2: {str(e)[:100]}'
+            elif company.retry_count >= MAX_RETRIES:
                 company.status = 'requeued'
                 company.retry_count = 0
                 company.failure_reason = f'Error after phase 1: {str(e)[:100]}'
-            elif company.status in ('discovered', 'browsing'):
+            else:
                 company.status = 'discovered'
                 company.failure_reason = f'Processing error: {str(e)[:100]}'
-            elif company.status == 'requeued':
-                company.status = 'discovered'
-                company.failure_reason = f'Processing error phase 2: {str(e)[:100]}'
-            
+
             db.commit()
             return False
 
 
 def watchdog_reset_stuck_companies(db) -> int:
     """Watchdog: Reset companies stuck in browsing for too long."""
-    cutoff_time = datetime.now() - timedelta(minutes=WATCHDOG_MINUTES)
-    
+    cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=WATCHDOG_MINUTES)
+
     stuck = db.query(Company).filter(
         Company.status == 'browsing',
+        Company.browse_heartbeat.isnot(None),
         Company.browse_heartbeat < cutoff_time
     ).all()
-    
+
     reset_count = 0
     for company in stuck:
         if company.retry_count is None:
             company.retry_count = 1
         else:
             company.retry_count += 1
-        
-        # Two-phase retry: discovered → requeued → failed
-        if company.status == 'requeued' and company.retry_count >= MAX_RETRIES_PHASE2:
+
+        max_total = MAX_RETRIES + MAX_RETRIES_PHASE2
+        if company.retry_count >= max_total:
             company.status = 'failed'
-            company.failure_reason = f'Watchdog: stuck >{WATCHDOG_MINUTES}min, phase 2 exhausted'
-            logger.error(f"Company {company.domain} permanently failed: phase 2 exhausted")
-        elif company.status in ('discovered', 'browsing') and company.retry_count >= MAX_RETRIES:
+            company.failure_reason = f'Watchdog: stuck >{WATCHDOG_MINUTES}min, all retries exhausted'
+            logger.error(f"Company {company.domain} permanently failed after watchdog timeout")
+        elif company.retry_count >= MAX_RETRIES:
             company.status = 'requeued'
-            company.retry_count = 0
-            company.failure_reason = f'Watchdog: stuck >{WATCHDOG_MINUTES}min, phase 1 exhausted'
-            logger.warning(f"Company {company.domain} moved to phase 2 (requeued)")
-        elif company.status == 'requeued':
-            company.status = 'discovered'
-            company.failure_reason = f'Watchdog: stuck >{WATCHDOG_MINUTES}min, phase 2 retry'
-            logger.warning(f"Company {company.domain} retrying phase 2 from watchdog")
+            company.failure_reason = f'Watchdog: stuck >{WATCHDOG_MINUTES}min, moved to phase 2'
+            logger.warning(f"Company {company.domain} moved to phase 2 by watchdog")
         else:
             company.status = 'discovered'
             company.failure_reason = f'Watchdog: stuck >{WATCHDOG_MINUTES}min, phase 1 retry'
             logger.warning(f"Company {company.domain} retrying phase 1 from watchdog")
-        
+
         company.browse_heartbeat = None
-        
         reset_count += 1
-    
+
     if reset_count > 0:
         db.commit()
         logger.info(f"Watchdog reset {reset_count} stuck companies")
-    
+
     return reset_count
 
 
@@ -334,7 +324,7 @@ def run_browser():
             time.sleep(POLL_INTERVAL)
             
         except Exception as e:
-            logger.error(f"Browser error: {e}")
+            logger.exception(f"Browser error: {e}")
             time.sleep(POLL_INTERVAL)
         finally:
             db.close()

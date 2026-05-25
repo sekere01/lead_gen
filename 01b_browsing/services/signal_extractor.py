@@ -3,12 +3,7 @@ import re
 import logging
 from typing import Dict, List, Any
 
-from utils.email_utils import (
-    clean_emails,
-    FILE_EXTENSION_BLOCKLIST,
-    PLACEHOLDER_DOMAINS,
-    STRICT_EMAIL_REGEX,
-)
+from utils.email_utils import clean_emails
 
 logger = logging.getLogger(__name__)
 
@@ -87,13 +82,6 @@ def extract_signals(html: str, url: str) -> Dict[str, bool]:
         signals['has_email_on_homepage'] = True
     
     return signals
-
-
-def extract_emails_from_html(html: str) -> List[str]:
-    """Extract and clean emails from HTML content."""
-    raw_email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]+\b'
-    raw_emails = re.findall(raw_email_pattern, html)
-    return clean_emails(raw_emails)
 
 
 def apply_score(signals: Dict[str, Any], base_score: int) -> int:

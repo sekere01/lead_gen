@@ -139,7 +139,6 @@ def save_batch_incremental(job_id: int, batch: List[Dict[str, Any]], db) -> int:
                     new_score = company_data['discovery_score']
                     if new_score > (existing.discovery_score or 0):
                         existing.discovery_score = new_score
-                        saved_count += 1
             except Exception as ex:
                 logger.error(f"Error saving {company_data['domain']}: {ex}")
                 continue

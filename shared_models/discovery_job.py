@@ -16,6 +16,7 @@ class DiscoveryJob(Base):
     results_count = Column(Integer, default=0)
     retry_count = Column(Integer, default=0)
     last_error = Column(Text)
+    error_message = Column(String(500))
     last_run = Column(DateTime)
     last_heartbeat = Column(DateTime)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

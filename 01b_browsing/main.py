@@ -96,12 +96,15 @@ def save_emails(company_id: int, emails: list, domain: str, db) -> int:
     return saved
 
 
-def process_company(company_id: int) -> bool:
-    """Process a single company - browse homepage and extract signals."""
+def process_company(company_id: int) -> tuple:
+    """Process a single company - browse homepage and extract signals. Returns (bool, dict)."""
+    from services.browser import _last_sources_used
+    source_stats = {"httpx": {"total": 0, "success": 0}, "playwright": {"total": 0, "success": 0}}
+    
     with SessionLocal() as db:
         company = db.query(Company).filter(Company.id == company_id).first()
         if not company:
-            return False
+            return False, source_stats
 
         domain = company.domain
         original_status = company.status
@@ -112,8 +115,18 @@ def process_company(company_id: int) -> bool:
         try:
             logger.info(f"Processing {domain}")
 
+            # Reset sub-source tracker before browsing
+            _last_sources_used["httpx"] = False
+            _last_sources_used["playwright"] = False
+
             # Browse homepage (pass db for heartbeat refresh during long fetches)
             html = browse_homepage(domain, db=db, company_id=company.id)
+
+            # Record which sources were actually used
+            for src in ("httpx", "playwright"):
+                if _last_sources_used[src]:
+                    source_stats[src]["total"] = 1
+                    source_stats[src]["success"] = 1
 
             if not html:
                 company.retry_count = (company.retry_count or 0) + 1
@@ -137,7 +150,7 @@ def process_company(company_id: int) -> bool:
                     company.failure_reason = f'No content fetched (attempt {company.retry_count}/{MAX_RETRIES})'
                     logger.warning(f"Company {domain} retrying phase 1: attempt {company.retry_count}")
                 db.commit()
-                return False
+                return False, source_stats
 
             # Check for parked
             signals = extract_signals(html, domain)
@@ -150,7 +163,7 @@ def process_company(company_id: int) -> bool:
                 company.failure_reason = 'Parked domain'
                 db.commit()
                 logger.info(f"Company {domain} is parked - filtered out")
-                return True
+                return True, source_stats
 
             # Extract emails
             emails = extract_emails_from_html(html)
@@ -181,7 +194,7 @@ def process_company(company_id: int) -> bool:
             db.commit()
 
             logger.info(f"Company {domain}: score={final_score} ({tier})")
-            return True
+            return True, source_stats
 
         except Exception as e:
             logger.error(f"Error processing {domain}: {e}")
@@ -203,7 +216,7 @@ def process_company(company_id: int) -> bool:
                 company.failure_reason = f'Processing error: {str(e)[:100]}'
 
             db.commit()
-            return False
+            return False, source_stats
 
 
 def _cleanup_zombie_browsers():
@@ -335,6 +348,7 @@ def run_browser():
             if companies:
                 company_ids = [c.id for c in companies]
                 logger.info(f"Found {len(company_ids)} companies to browse")
+                aggregated_stats = {"httpx": {"total": 0, "success": 0}, "playwright": {"total": 0, "success": 0}}
                 
                 with ThreadPoolExecutor(max_workers=BROWSING_WORKERS) as executor:
                     futures = {
@@ -345,9 +359,24 @@ def run_browser():
                     for future in as_completed(futures):
                         cid = futures[future]
                         try:
-                            future.result()
+                            _, c_source_stats = future.result()
+                            for src_key in aggregated_stats:
+                                aggregated_stats[src_key]["total"] += c_source_stats[src_key]["total"]
+                                aggregated_stats[src_key]["success"] += c_source_stats[src_key]["success"]
                         except Exception as e:
                             logger.error(f"Unhandled error in thread for company {cid}: {e}")
+                
+                # POST aggregated source stats
+                try:
+                    import httpx
+                    api_base = os.getenv('API_BASE', 'http://localhost:8000/api/v1')
+                    httpx.post(
+                        f"{api_base}/dashboard/source-status",
+                        json={"node": "browsing", "sources": aggregated_stats},
+                        timeout=5.0,
+                    )
+                except Exception as e:
+                    logger.debug(f"Failed to post source status: {e}")
             else:
                 logger.debug("No companies to browse, waiting...")
             

@@ -1,8 +1,7 @@
 """
 Enricher Service - Main logic.
-Polls Company for status='discovered' AND discovery_score >= 2.
-Runs sources in priority order: theHarvester → Explicit pages → Homepage/footer.
-Target: 10 emails per domain.
+Poll Company for status='discovered' AND discovery_score >= 2.
+Runs sources in priority order: theHarvester → Google Dorking → Sitemap → Explicit pages → Homepage.
 Entry: python main.py
 """
 import os
@@ -12,12 +11,15 @@ import logging
 import logging.handlers
 import json
 from datetime import datetime, timedelta, timezone
+import xml.etree.ElementTree as ET
 from typing import List, Tuple, Dict, Any, Set
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import docker
 from docker.errors import APIError
 import httpx
+from groq import Groq
+from googlesearch import search as google_search
 
 from database import SessionLocal, init_db, Company, Contact, ExtractedEmail
 from config import settings
@@ -53,7 +55,6 @@ logger.addHandler(file_handler)
 POLL_INTERVAL = settings.ENRICHER_POLL_INTERVAL
 MAX_CONCURRENT = settings.MAX_CONCURRENT_CONTAINERS
 
-TARGET_EMAILS = settings.TARGET_EMAILS_PER_DOMAIN
 HEARTBEAT_INTERVAL = settings.HEARTBEAT_INTERVAL
 DOMAIN_TIMEOUT = settings.ENRICHMENT_TIMEOUT_DOMAIN
 DOCKER_TIMEOUT = settings.ENRICHMENT_TIMEOUT_DOCKER
@@ -75,6 +76,31 @@ EXPLICIT_PAGES = [
     'team', 'team.html', 'our-team',
     'people', 'staff', 'directory',
 ]
+
+GOOGLE_DORK_QUERIES = {
+    "high_value": [
+        'site:{domain} "ceo" OR "chief executive" email',
+        'site:{domain} "cfo" OR "chief financial" email',
+        'site:{domain} "cto" OR "chief technology" OR "chief technical" email',
+        'site:{domain} "coo" OR "chief operating" email',
+        'site:{domain} "vp sales" OR "sales director" OR "head of sales" email',
+        'site:{domain} "cmo" OR "marketing director" OR "head of marketing" email',
+        'site:{domain} "account payables" OR "accounts payable" OR "procurement" email',
+        'site:{domain} "retail director" OR "retail manager" OR "ecommerce manager" email',
+        'site:{domain} "vp" OR "director" OR "head of" inurl:team "@{domain}"',
+        'site:{domain} "leadership" OR "executive" OR "management team" intitle:contact',
+        'site:{domain} "business development" OR "bd manager" OR "partnership" email',
+        'site:{domain} "supply chain" OR "logistics director" OR "operations" email',
+    ],
+    "low_value": [
+        'site:{domain} "info@" OR "contact@" OR "hello@" email',
+        'site:{domain} "support@" OR "help@" OR "admin@" email',
+        'site:{domain} "careers@" OR "jobs@" OR "hr@" email',
+        'site:{domain} intitle:contact inurl:contact email',
+        'site:{domain} mailto: "@{domain}" -www',
+        'site:{domain} "newsletter" OR "subscribe" email',
+    ],
+}
 
 
 def update_heartbeat(company, db) -> None:
@@ -210,7 +236,7 @@ async def fetch_page_async(client: httpx.AsyncClient, url: str, headers: dict) -
 _fetch_semaphore = asyncio.Semaphore(20)
 
 
-async def _extract_async(client, urls: List[str], headers: dict, target: int) -> List[Tuple[str, str]]:
+async def _extract_async(client, urls: List[str], headers: dict) -> List[Tuple[str, str]]:
     """Async helper to fetch multiple pages with concurrency limit."""
     async def bounded_fetch(url):
         async with _fetch_semaphore:
@@ -220,7 +246,7 @@ async def _extract_async(client, urls: List[str], headers: dict, target: int) ->
     return results
 
 
-def extract_emails_from_pages(domain: str, hosts: List[str], target: int) -> List[str]:
+def extract_emails_from_pages(domain: str, hosts: List[str]) -> List[str]:
     """Extract emails from explicit pages on discovered hosts."""
     all_emails = []
     
@@ -258,12 +284,12 @@ def extract_emails_from_pages(domain: str, hosts: List[str], target: int) -> Lis
                     ])
     
     try:
-        results = asyncio.run(_extract_async(httpx.AsyncClient(http2=True), urls_to_fetch, headers, target))
+        results = asyncio.run(_extract_async(httpx.AsyncClient(http2=True), urls_to_fetch, headers))
     except Exception:
-        results = asyncio.run(_extract_async(httpx.AsyncClient(), urls_to_fetch, headers, target))
+        results = asyncio.run(_extract_async(httpx.AsyncClient(), urls_to_fetch, headers))
     
     for url, text in results:
-        if text and len(all_emails) < target:
+        if text:
             extracted = extract_emails_regex(text)
             for email in extracted:
                 email = email.strip().lower()
@@ -281,16 +307,12 @@ def extract_emails_from_pages(domain: str, hosts: List[str], target: int) -> Lis
                 # Existing dedup logic
                 if email not in [e.lower() for e in all_emails]:
                     all_emails.append(email)
-                if len(all_emails) >= target:
-                    break
-        if len(all_emails) >= target:
-            break
     
     logger.info(f"Explicit pages: found {len(all_emails)} unique emails for {domain}")
     return all_emails
 
 
-def extract_emails_from_homepage(domain: str, target: int) -> List[str]:
+def extract_emails_from_homepage(domain: str) -> List[str]:
     """Extract emails from homepage and footer scan."""
     all_emails = []
     
@@ -306,8 +328,6 @@ def extract_emails_from_homepage(domain: str, target: int) -> List[str]:
     ]
     
     for url in urls:
-        if len(all_emails) >= target:
-            break
         try:
             response = httpx.Client(timeout=CRAWLER_HTTP_TIMEOUT).get(url, headers=headers, follow_redirects=True)
             if response.status_code == 200:
@@ -384,9 +404,172 @@ def save_emails_incremental(company_id: int, emails: List[str], email_type: str,
     return saved_count
 
 
-def process_company(company) -> bool:
-    """Process a single company with source priority and early stop."""
+def generate_google_dork_queries(domain: str) -> List[str]:
+    """Generate Google dork queries via LLM. Falls back to editable static dict."""
+    api_key = getattr(settings, 'GROQ_API_KEY', None)
+    if api_key:
+        try:
+            client = Groq(api_key=api_key)
+            model = getattr(settings, 'GROQ_MODEL', 'llama-3.1-8b-instant')
+            prompt = f"""You are an OSINT email discovery specialist. Generate 15 Google dork queries to find email addresses on {domain}.
+
+SPLIT 70/30:
+- 70% targeting HIGH-VALUE decision-maker roles (C-suite, Sales, Marketing, Finance, Procurement, Retail management)
+- 30% targeting general catch-all, contact, and support emails
+
+HIGH-VALUE roles to target:
+- CEO, CFO, CTO, COO, CIO, Founder
+- VP Sales, Sales Director, Head of Sales, Business Development
+- CMO, Marketing Director, Head of Marketing, Growth
+- Account Payables, Procurement, Purchasing Manager
+- Retail Director, Retail Manager, E-commerce Manager
+- Finance Director, Controller
+- Leadership/executive team pages with email contacts
+
+GENERAL/CATCH-ALL roles:
+- info@, contact@, hello@, admin@
+- support@, help@
+- newsletter, subscribe, careers
+
+Use diverse dork patterns like:
+- site:{domain} "ceo" OR "chief executive" email
+- site:{domain} inurl:team "sales director" email
+- site:{domain} intitle:contact "info@"
+
+Return ONLY a JSON array of 15 query strings. No explanation. Example: ["site:example.com \"ceo\" OR \"chief executive\" email", ...]"""
+
+            response = client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.8,
+                max_tokens=1000
+            )
+            raw = response.choices[0].message.content.strip()
+            queries = json.loads(raw)
+            return queries[:15]
+        except Exception as e:
+            logger.warning(f"Groq dork generation failed: {e}, using static fallback")
+
+    all_queries = []
+    for q in GOOGLE_DORK_QUERIES.get("high_value", []):
+        all_queries.append(q.format(domain=domain))
+    for q in GOOGLE_DORK_QUERIES.get("low_value", []):
+        all_queries.append(q.format(domain=domain))
+    return all_queries
+
+
+def extract_emails_from_google_dorking(domain: str) -> List[str]:
+    """Extract emails via Google dorking with role-targeted queries."""
+    all_emails = []
+    queries = generate_google_dork_queries(domain)
+
+    logger.info(f"Google Dorking: {len(queries)} queries for {domain}")
+
+    for query in queries:
+        try:
+            for result in google_search(query, num_results=30, sleep_interval=2):
+                snippet = result.description if hasattr(result, 'description') else ""
+                title = result.title if hasattr(result, 'title') else ""
+                text = f"{title} {snippet}"
+                extracted = extract_emails_regex(text)
+                for email in extracted:
+                    email = email.strip().lower()
+                    if email and '@' in email and not is_noise_email(email) and not is_placeholder_email(email):
+                        if email not in all_emails:
+                            all_emails.append(email)
+        except Exception as e:
+            logger.debug(f"Google dork query failed: {query[:60]}... {e}")
+            continue
+
+    logger.info(f"Google Dorking: found {len(all_emails)} emails for {domain}")
+    return all_emails
+
+
+def extract_emails_from_sitemap(domain: str) -> List[str]:
+    """Extract emails by crawling sitemap-discovered pages."""
+    all_emails = []
+    sitemap_urls = set()
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    }
+
+    urls_to_check = [
+        f"https://{domain}/robots.txt",
+        f"https://{domain}/sitemap.xml",
+        f"https://{domain}/sitemap_index.xml",
+        f"http://{domain}/sitemap.xml",
+    ]
+
+    for url in urls_to_check:
+        try:
+            response = httpx.get(url, timeout=CRAWLER_HTTP_TIMEOUT, headers=headers, follow_redirects=True)
+            if response.status_code != 200:
+                continue
+            body = response.text.lower()
+            if "sitemap:" in body:
+                for line in body.splitlines():
+                    if line.strip().startswith("sitemap:"):
+                        sm_url = line.split(":", 1)[1].strip()
+                        sitemap_urls.add(sm_url)
+            if ".xml" in url and ("<urlset" in body or "<sitemapindex" in body):
+                sitemap_urls.add(url)
+        except Exception:
+            continue
+
+    page_urls = []
+    for sm_url in sitemap_urls:
+        try:
+            response = httpx.get(sm_url, timeout=CRAWLER_HTTP_TIMEOUT, headers=headers, follow_redirects=True)
+            if response.status_code != 200:
+                continue
+            root = ET.fromstring(response.text)
+            ns = {'s': 'http://www.sitemaps.org/schemas/sitemap/0.9'}
+            for loc in root.iterfind('.//s:loc', ns):
+                loc_text = loc.text.strip()
+                if domain in loc_text and loc_text not in page_urls:
+                    page_urls.append(loc_text)
+        except Exception:
+            continue
+
+    if not page_urls:
+        return []
+
+    page_urls = page_urls[:50]
+    logger.info(f"Sitemap: {len(page_urls)} pages to scrape for {domain}")
+
+    try:
+        results = asyncio.run(_extract_async(httpx.AsyncClient(http2=True), page_urls, headers))
+    except Exception:
+        results = asyncio.run(_extract_async(httpx.AsyncClient(), page_urls, headers))
+
+    for url, text in results:
+        if not text:
+            continue
+        extracted = extract_emails_regex(text)
+        for email in extracted:
+            email = email.strip().lower()
+            email = clean_email_prefixes(email)
+            if not email or '@' not in email:
+                continue
+            if is_noise_email(email) or is_placeholder_email(email):
+                continue
+            if email not in all_emails:
+                all_emails.append(email)
+
+    logger.info(f"Sitemap: found {len(all_emails)} emails for {domain}")
+    return all_emails
+
+
+def process_company(company) -> tuple:
+    """Process a single company through all email extraction sources. Returns (bool, dict)."""
     db = SessionLocal()
+    source_stats = {
+        "harvester": {"total": 0, "success": 0},
+        "google_dorking": {"total": 0, "success": 0},
+        "sitemap": {"total": 0, "success": 0},
+        "explicit_pages": {"total": 0, "success": 0},
+        "homepage": {"total": 0, "success": 0},
+    }
     try:
         domain = company.domain
         company_id = company.id
@@ -395,7 +578,7 @@ def process_company(company) -> bool:
         company = db.merge(company)
         if company is None:
             logger.warning(f"Company {domain} not found in DB")
-            return False
+            return False, source_stats
             
         company.status = 'enriching'
         company.last_heartbeat = datetime.now(timezone.utc)
@@ -405,7 +588,7 @@ def process_company(company) -> bool:
         db.refresh(company)
         if company.status != 'enriching':
             logger.debug(f"Company {domain} already being processed, skipping")
-            return False
+            return False, source_stats
         
         saved_count = 0
         all_emails: Set[str] = set()
@@ -422,6 +605,7 @@ def process_company(company) -> bool:
                 failure_reasons.append("timeout before harvester")
             else:
                 emails, hosts = run_docker_harvester(domain)
+                source_stats["harvester"]["total"] = len(emails)
                 
                 for email in emails:
                     all_emails.add(email.lower())
@@ -429,29 +613,80 @@ def process_company(company) -> bool:
                 if emails:
                     saved = save_emails_incremental(company.id, emails, 'harvester', domain, db)
                     saved_count += saved
+                    source_stats["harvester"]["success"] = saved
                 
-                logger.info(f"Source 1 (Harvester): {len(emails)} emails, total: {len(all_emails)}/{TARGET_EMAILS}")
-                
-                if len(all_emails) >= TARGET_EMAILS:
-                    raise TimeoutError("target reached")
+                logger.info(f"Source 1 (Harvester): {len(emails)} emails, total: {len(all_emails)}")
                 
                 if time.time() - last_heartbeat_time >= HEARTBEAT_INTERVAL:
                     update_heartbeat(company, db)
                     last_heartbeat_time = time.time()
                     
-        except TimeoutError:
-            raise
         except Exception as e:
             logger.warning(f"Source 1 (Harvester) failed for {domain}: {e}")
             failure_reasons.append(f"harvester: {str(e)[:100]}")
         
-        # Source 2: Explicit pages
+        # Source 2: Google Dorking
+        try:
+            if time.time() - start_time > DOMAIN_TIMEOUT:
+                failure_reasons.append("timeout before google dorking")
+            else:
+                emails = extract_emails_from_google_dorking(domain)
+                source_stats["google_dorking"]["total"] = len(emails)
+                
+                new_emails = [e for e in emails if e.lower() not in [e2.lower() for e2 in all_emails]]
+                for email in new_emails:
+                    all_emails.add(email.lower())
+                
+                if new_emails:
+                    saved = save_emails_incremental(company.id, new_emails, 'google_dork', domain, db)
+                    saved_count += saved
+                    source_stats["google_dorking"]["success"] = saved
+                
+                logger.info(f"Source 2 (Google Dorking): {len(new_emails)} new emails, total: {len(all_emails)}")
+                
+                if time.time() - last_heartbeat_time >= HEARTBEAT_INTERVAL:
+                    update_heartbeat(company, db)
+                    last_heartbeat_time = time.time()
+                    
+        except Exception as e:
+            logger.warning(f"Source 2 (Google Dorking) failed for {domain}: {e}")
+            failure_reasons.append(f"google_dork: {str(e)[:100]}")
+        
+        # Source 3: Sitemap crawl
+        try:
+            if time.time() - start_time > DOMAIN_TIMEOUT:
+                failure_reasons.append("timeout before sitemap")
+            else:
+                emails = extract_emails_from_sitemap(domain)
+                source_stats["sitemap"]["total"] = len(emails)
+                
+                new_emails = [e for e in emails if e.lower() not in [e2.lower() for e2 in all_emails]]
+                for email in new_emails:
+                    all_emails.add(email.lower())
+                
+                if new_emails:
+                    saved = save_emails_incremental(company.id, new_emails, 'sitemap', domain, db)
+                    saved_count += saved
+                    source_stats["sitemap"]["success"] = saved
+                
+                logger.info(f"Source 3 (Sitemap): {len(new_emails)} new emails, total: {len(all_emails)}")
+                
+                if time.time() - last_heartbeat_time >= HEARTBEAT_INTERVAL:
+                    update_heartbeat(company, db)
+                    last_heartbeat_time = time.time()
+                    
+        except Exception as e:
+            logger.warning(f"Source 3 (Sitemap) failed for {domain}: {e}")
+            failure_reasons.append(f"sitemap: {str(e)[:100]}")
+        
+        # Source 4: Explicit pages
         try:
             if time.time() - start_time > DOMAIN_TIMEOUT:
                 failure_reasons.append("timeout before explicit pages")
             else:
                 page_hosts = [h for h in hosts if h] if hosts else [domain]
-                emails = extract_emails_from_pages(domain, page_hosts, TARGET_EMAILS - len(all_emails))
+                emails = extract_emails_from_pages(domain, page_hosts)
+                source_stats["explicit_pages"]["total"] = len(emails)
                 
                 new_emails = [e for e in emails if e.lower() not in [e2.lower() for e2 in all_emails]]
                 for email in new_emails:
@@ -460,28 +695,25 @@ def process_company(company) -> bool:
                 if new_emails:
                     saved = save_emails_incremental(company.id, new_emails, 'explicit_pages', domain, db)
                     saved_count += saved
+                    source_stats["explicit_pages"]["success"] = saved
                 
-                logger.info(f"Source 2 (Explicit pages): {len(new_emails)} new emails, total: {len(all_emails)}/{TARGET_EMAILS}")
-                
-                if len(all_emails) >= TARGET_EMAILS:
-                    raise TimeoutError("target reached")
+                logger.info(f"Source 4 (Explicit pages): {len(new_emails)} new emails, total: {len(all_emails)}")
                 
                 if time.time() - last_heartbeat_time >= HEARTBEAT_INTERVAL:
                     update_heartbeat(company, db)
                     last_heartbeat_time = time.time()
                     
-        except TimeoutError:
-            raise
         except Exception as e:
-            logger.warning(f"Source 2 (Explicit pages) failed for {domain}: {e}")
+            logger.warning(f"Source 4 (Explicit pages) failed for {domain}: {e}")
             failure_reasons.append(f"explicit_pages: {str(e)[:100]}")
         
-        # Source 3: Homepage + footer scan
+        # Source 5: Homepage + footer scan
         try:
             if time.time() - start_time > DOMAIN_TIMEOUT:
                 failure_reasons.append("timeout before homepage")
             else:
-                emails = extract_emails_from_homepage(domain, TARGET_EMAILS - len(all_emails))
+                emails = extract_emails_from_homepage(domain)
+                source_stats["homepage"]["total"] = len(emails)
                 
                 new_emails = [e for e in emails if e.lower() not in [e2.lower() for e2 in all_emails]]
                 for email in new_emails:
@@ -490,13 +722,12 @@ def process_company(company) -> bool:
                 if new_emails:
                     saved = save_emails_incremental(company.id, new_emails, 'homepage', domain, db)
                     saved_count += saved
+                    source_stats["homepage"]["success"] = saved
                 
-                logger.info(f"Source 3 (Homepage): {len(new_emails)} new emails, total: {len(all_emails)}/{TARGET_EMAILS}")
+                logger.info(f"Source 5 (Homepage): {len(new_emails)} new emails, total: {len(all_emails)}")
                 
-        except TimeoutError:
-            raise
         except Exception as e:
-            logger.warning(f"Source 3 (Homepage) failed for {domain}: {e}")
+            logger.warning(f"Source 5 (Homepage) failed for {domain}: {e}")
             failure_reasons.append(f"homepage: {str(e)[:100]}")
         
         # Check for timeout
@@ -504,7 +735,7 @@ def process_company(company) -> bool:
             logger.warning(f"Domain {domain} exceeded {DOMAIN_TIMEOUT}s timeout")
             failure_reasons.append(f"timeout after {int(time.time() - start_time)}s")
         
-        # All sources exhausted - mark enriched (re-fetch to ensure object is attached)
+        # All sources exhausted - mark enriched
         try:
             company = db.query(Company).filter(Company.id == company_id).first()
             if company:
@@ -516,21 +747,8 @@ def process_company(company) -> bool:
             logger.warning(f"Failed to commit status for {domain}: {commit_err}")
         
         logger.info(f"Company {domain} enriched: {saved_count} contacts saved, {len(all_emails)} total emails")
-        return True
+        return True, source_stats
         
-    except TimeoutError:
-        try:
-            company = db.query(Company).filter(Company.id == company_id).first()
-            if company:
-                company.status = 'enriched'
-                company.last_heartbeat = None
-                company.failure_reason = "; ".join(failure_reasons) if failure_reasons else "target reached"
-                db.commit()
-        except Exception as commit_err:
-            logger.warning(f"Failed to commit status for {domain}: {commit_err}")
-        logger.info(f"Company {domain} enriched (target reached): {len(all_emails)} emails")
-        return True
-    
     except Exception as e:
         logger.error(f"Error processing company {domain}: {e}")
         try:
@@ -542,7 +760,7 @@ def process_company(company) -> bool:
                 db.commit()
         except Exception as commit_err:
             logger.warning(f"Failed to commit error status for {domain}: {commit_err}")
-        return False
+        return False, source_stats
     finally:
         db.close()
 
@@ -652,6 +870,13 @@ def run_enricher():
             
             if companies:
                 logger.info(f"Found {len(companies)} companies to enrich")
+                aggregated_stats = {
+                    "harvester": {"total": 0, "success": 0},
+                    "google_dorking": {"total": 0, "success": 0},
+                    "sitemap": {"total": 0, "success": 0},
+                    "explicit_pages": {"total": 0, "success": 0},
+                    "homepage": {"total": 0, "success": 0},
+                }
                 
                 with ThreadPoolExecutor(max_workers=MAX_CONCURRENT) as executor:
                     futures = {executor.submit(process_company, company): company for company in companies}
@@ -659,10 +884,24 @@ def run_enricher():
                     for future in as_completed(futures):
                         company = futures[future]
                         try:
-                            result = future.result()
+                            result, stats = future.result()
+                            for src_key in aggregated_stats:
+                                aggregated_stats[src_key]["total"] += stats[src_key]["total"]
+                                aggregated_stats[src_key]["success"] += stats[src_key]["success"]
                             logger.info(f"Company {company.domain} processed: {result}")
                         except Exception as e:
                             logger.error(f"Error processing {company.domain}: {e}")
+                
+                # POST aggregated source stats
+                try:
+                    api_base = os.getenv('API_BASE', 'http://localhost:8000/api/v1')
+                    httpx.post(
+                        f"{api_base}/dashboard/source-status",
+                        json={"node": "enrichment", "sources": aggregated_stats},
+                        timeout=5.0,
+                    )
+                except Exception as e:
+                    logger.debug(f"Failed to post source status: {e}")
             else:
                 logger.debug("No companies to enrich, waiting...")
             

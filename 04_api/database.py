@@ -21,10 +21,10 @@ from shared_models import (
 engine = create_engine(
     settings.DATABASE_URL,
     pool_pre_ping=True,
-    pool_size=5,
-    max_overflow=3,
+    pool_size=2,
+    max_overflow=1,
     pool_recycle=300,
-    pool_timeout=10,
+    pool_timeout=5,
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -32,7 +32,7 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 @event.listens_for(engine, "connect")
 def set_statement_timeout(dbapi_conn, connection_record):
     cursor = dbapi_conn.cursor()
-    cursor.execute("SET statement_timeout = '30000'")
+    cursor.execute("SET statement_timeout = '5000'")
     cursor.close()
 
 
@@ -54,6 +54,10 @@ def _ensure_indexes():
         conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS idx_contacts_email_lower ON contacts (LOWER(email))"))
         conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS idx_job_stats_type_status ON job_stats(job_type, status)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_metrics_service_time ON service_metrics(service, recorded_at)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_contacts_is_verified ON contacts(is_verified)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_discovery_jobs_created_at ON discovery_jobs(created_at)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_companies_industry ON companies(industry)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_companies_created_at ON companies(created_at)"))
         conn.commit()
 
 

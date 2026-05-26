@@ -489,8 +489,8 @@ def search_domains_dual(base_query: str, region: str = "", target_results: int =
     return final_domains, metadata
 
 
-def search_domains(keyword: str, num_results: int = 100, region: str = "") -> List[str]:
-    """Convenience wrapper — main entry point for the pipeline."""
+def search_domains(keyword: str, num_results: int = 100, region: str = "") -> Tuple[List[str], Dict[str, int]]:
+    """Convenience wrapper — main entry point for the pipeline. Returns (domains, source_counts)."""
     if region is None:
         region = ""
     elif not isinstance(region, str):
@@ -504,5 +504,10 @@ def search_domains(keyword: str, num_results: int = 100, region: str = "") -> Li
         ddgs_results=results_per_source,
         searxng_results=results_per_source
     )
+    source_counts = {
+        "ddgs": metadata.get("ddgs_count", 0),
+        "searxng": metadata.get("searxng_count", 0),
+        "commoncrawl": metadata.get("commoncrawl_count", 0),
+    }
     logger.info(f"Search results: {metadata}")
-    return domains
+    return domains, source_counts

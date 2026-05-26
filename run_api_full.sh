@@ -75,7 +75,8 @@ start_all() {
     echo "Starting services..."
 
     echo "  Starting API on port 8000..."
-    ./venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8000 &
+    # DEV-ONLY: remove --reload before production (file-watcher process is wasteful/sec-risky)
+    ./venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload &
     echo $! > "$API_PID_FILE"
     echo "  API PID: $(cat $API_PID_FILE)"
 

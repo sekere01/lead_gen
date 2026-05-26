@@ -62,37 +62,51 @@ def update_heartbeat(job, db) -> None:
 def discover_domains_isolated(keyword: str, region: str = "") -> Dict[str, Any]:
     """
     Discovery with source isolation - each source runs independently.
-    Returns dict with 'domains', 'sources_succeeded', 'sources_failed'.
+    Returns dict with 'domains', 'sources_succeeded', 'sources_failed', 'source_stats'.
     """
     result = {
         'domains': [],
         'sources_succeeded': [],
         'sources_failed': [],
+        'source_stats': {
+            "ddgs": {"total": 0, "success": 0},
+            "searxng": {"total": 0, "success": 0},
+            "commoncrawl": {"total": 0, "success": 0},
+        },
     }
 
     logger.info(f"Starting isolated discovery for keyword: '{keyword}', region: '{region}'")
 
     # Source 1: DuckDuckGo + SearXNG (search_orchestration)
     try:
-        search_results = search_domains(keyword, num_results=0, region=region)
+        search_results, source_counts = search_domains(keyword, num_results=0, region=region)
         logger.info(f"Search found {len(search_results)} domains")
         if search_results:
             result['domains'].extend(search_results)
             result['sources_succeeded'].append('search')
+        for src_key in ("ddgs", "searxng", "commoncrawl"):
+            count = source_counts.get(src_key, 0)
+            result['source_stats'][src_key]["total"] = count
+            result['source_stats'][src_key]["success"] = count
     except Exception as e:
         logger.warning(f"Search failed for '{keyword}': {e}")
         result['sources_failed'].append('search')
 
-    # Source 2: CommonCrawl (independent try/except)
+    # Source 2: CommonCrawl (independent try/except) — only if not already covered by search_orchestration
     try:
         cc_results = discover_commoncrawl(keyword, region=region, max_results=500)
         logger.info(f"CommonCrawl found {len(cc_results)} domains")
+        cc_count_before = len(result['domains'])
         for cc in cc_results:
             cc_domain = cc.get('domain', '')
             if cc_domain and cc_domain not in result['domains']:
                 result['domains'].append(cc_domain)
         if cc_results:
             result['sources_succeeded'].append('commoncrawl')
+        # Update commoncrawl count with any new domains found
+        new_cc = len(result['domains']) - cc_count_before
+        result['source_stats']["commoncrawl"]["total"] += new_cc
+        result['source_stats']["commoncrawl"]["success"] += new_cc
     except Exception as e:
         logger.warning(f"CommonCrawl failed for '{keyword}': {e}")
         result['sources_failed'].append('commoncrawl')
@@ -147,8 +161,8 @@ def save_batch_incremental(job_id: int, batch: List[Dict[str, Any]], db) -> int:
     return saved_count
 
 
-def process_job(job, db) -> bool:
-    """Process a single discovery job with heartbeat and incremental saves."""
+def process_job(job, db) -> tuple:
+    """Process a single discovery job. Returns (bool, dict) with status and source_stats."""
     job.status = 'processing'
     job.last_run = datetime.now(timezone.utc)
     job.last_heartbeat = datetime.now(timezone.utc)
@@ -156,11 +170,13 @@ def process_job(job, db) -> bool:
 
     saved_count = 0
     last_heartbeat_time = time.time()
+    source_stats = {"ddgs": {"total": 0, "success": 0}, "searxng": {"total": 0, "success": 0}, "commoncrawl": {"total": 0, "success": 0}}
 
     try:
         discovery_result = discover_domains_isolated(job.keyword, job.region)
         domains = discovery_result['domains']
         sources_succeeded = discovery_result['sources_succeeded']
+        source_stats = discovery_result['source_stats']
 
         # Check graceful degradation: all sources failed
         if not sources_succeeded and not domains:
@@ -171,7 +187,7 @@ def process_job(job, db) -> bool:
             job.last_error = None
             db.commit()
             logger.warning(f"Job {job.id}: All sources failed for '{job.keyword}'")
-            return True
+            return True, source_stats
 
         if not domains:
             job.status = 'completed'
@@ -180,7 +196,7 @@ def process_job(job, db) -> bool:
             job.retry_count = 0
             db.commit()
             logger.warning(f"Job {job.id}: No domains found for '{job.keyword}'")
-            return True
+            return True, source_stats
 
         # Process domains and save incrementally every BATCH_SIZE
         current_batch = []
@@ -229,7 +245,7 @@ def process_job(job, db) -> bool:
         update_job_stats(db, 'discovery', 'completed', 1, job.id)
 
         logger.info(f"Job {job.id} completed: {saved_count} companies saved")
-        return True
+        return True, source_stats
 
     except Exception as e:
         current_retry = (job.retry_count or 0) + 1
@@ -251,7 +267,7 @@ def process_job(job, db) -> bool:
             update_job_stats(db, 'discovery', 'pending', 1, job.id)
 
         db.commit()
-        return False
+        return False, source_stats
 
 
 def watchdog_reset_stuck_jobs(db) -> int:
@@ -363,7 +379,19 @@ def run_discoverer():
                 job.last_heartbeat = datetime.now(timezone.utc)
                 db.commit()
                 update_job_stats(db, 'discovery', 'processing', 1, job.id)
-                process_job(job, db)
+                _, j_source_stats = process_job(job, db)
+                
+                # POST per-source stats
+                try:
+                    import httpx
+                    api_base = os.getenv('API_BASE', 'http://localhost:8000/api/v1')
+                    httpx.post(
+                        f"{api_base}/dashboard/source-status",
+                        json={"node": "discovery", "sources": j_source_stats},
+                        timeout=5.0,
+                    )
+                except Exception as e:
+                    logger.debug(f"Failed to post source status: {e}")
             else:
                 logger.debug("No pending jobs, waiting...")
 

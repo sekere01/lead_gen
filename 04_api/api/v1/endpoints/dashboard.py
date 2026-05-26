@@ -4,6 +4,7 @@ Provides aggregated metrics and pipeline status for the dashboard.
 """
 import logging
 import time
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from typing import List, Optional
@@ -12,6 +13,7 @@ from sqlalchemy import func, text
 
 from database import get_db, Company, Contact, DiscoveryJob
 from services.process_manager import process_manager
+from shared_models import ServiceMetrics
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
@@ -30,6 +32,50 @@ class VerificationProgress(BaseModel):
     failed: int = 0
     status: str = "idle"
     timestamp: Optional[str] = None
+
+
+class SourceStatusPayload(BaseModel):
+    node: str
+    sources: dict
+
+
+PIPELINE_SOURCE_LABELS = {
+    "discovery": ["ddgs", "searxng", "commoncrawl"],
+    "browsing": ["httpx", "playwright"],
+    "enrichment": ["harvester", "google_dorking", "sitemap", "explicit_pages", "homepage"],
+    "verification": ["neverbounce", "zerobounce", "bsdapi"],
+}
+
+
+def _get_source_status(node: str, db: Session) -> dict:
+    """Fetch per-source success/failure stats for a pipeline node from ServiceMetrics."""
+    labels = PIPELINE_SOURCE_LABELS.get(node, [])
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+    rows = db.query(ServiceMetrics).filter(
+        ServiceMetrics.service == node,
+        ServiceMetrics.recorded_at >= cutoff,
+    ).all()
+
+    sources = {}
+    for label in labels:
+        prefix = f"source_{label}"
+        matched = [r for r in rows if r.metric.startswith(prefix)]
+        total = 0
+        success = 0
+        for r in matched:
+            if r.metric.endswith("_total"):
+                total += int(r.value)
+            elif r.metric.endswith("_success"):
+                success += int(r.value)
+        sources[label] = {
+            "total": total,
+            "success": success,
+            "status": "success" if success == total and total > 0
+                       else "partial" if success > 0
+                       else "failed" if total > 0
+                       else "idle",
+        }
+    return sources
 
 
 def _format_uptime(seconds: Optional[int]) -> str:
@@ -84,7 +130,6 @@ class DashboardStats(BaseModel):
 @router.get("/stats", response_model=DashboardStats)
 def get_dashboard_stats(db: Session = Depends(get_db)):
     """Get dashboard statistics."""
-    # Database connectivity check
     try:
         start = time.time()
         db.execute(text("SELECT 1"))
@@ -94,44 +139,57 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
         db_status = {"status": "disconnected", "error": str(e)}
         logger.error(f"Database health check failed: {e}")
 
-    # Company counts by status
-    company_status_counts = db.query(
+    # 1. Company counts by status (1 query)
+    company_status_rows = db.query(
         Company.status,
         func.count(Company.id).label('count')
     ).group_by(Company.status).all()
-    
+    company_by_status = {s: c for s, c in company_status_rows}
+
     companies_by_status = [
-        CompanyCountByStatus(status=status, count=count)
-        for status, count in company_status_counts
+        CompanyCountByStatus(status=status, count=company_by_status[status])
+        for status in company_by_status
     ]
-    
-    companies_total = sum(c.count for c in companies_by_status)
-    
-    # Contact counts by verification status
-    contact_verification_counts = db.query(
+    companies_total = sum(company_by_status.values())
+
+    # 2. Contact counts by verification status (1 query)
+    contact_vstatus_rows = db.query(
         func.coalesce(Contact.verification_status, 'unknown').label('verification_status'),
         func.count(Contact.id).label('count')
     ).group_by(func.coalesce(Contact.verification_status, 'unknown')).all()
-    
+    contact_by_vstatus = {s: c for s, c in contact_vstatus_rows}
+
     contacts_by_verification = [
-        ContactCountByVerification(verification_status=status, count=count)
-        for status, count in contact_verification_counts
+        ContactCountByVerification(verification_status=status, count=contact_by_vstatus[status])
+        for status in contact_by_vstatus
     ]
-    
-    contacts_total = sum(c.count for c in contacts_by_verification)
-    verified_count = db.query(Contact).filter(Contact.is_verified == True).count()
-    
-    # Job counts
-    pending_jobs = db.query(DiscoveryJob).filter(DiscoveryJob.status == 'pending').count()
-    processing_jobs = db.query(DiscoveryJob).filter(DiscoveryJob.status == 'processing').count()
-    completed_jobs = db.query(DiscoveryJob).filter(DiscoveryJob.status == 'completed').count()
-    failed_jobs = db.query(DiscoveryJob).filter(DiscoveryJob.status == 'failed').count()
-    
-    # Job queue (pending + processing)
+    contacts_total = sum(contact_by_vstatus.values())
+
+    # 3. Contacts by is_verified (1 query, replaces 2 individual COUNTs)
+    is_verified_rows = db.query(
+        Contact.is_verified,
+        func.count(Contact.id).label('count')
+    ).group_by(Contact.is_verified).all()
+    is_verified_map = {r.is_verified: r.count for r in is_verified_rows}
+    verified_count = is_verified_map.get(True, 0)
+
+    # 4. Job counts by status (1 query, replaces 6 individual COUNTs)
+    job_count_rows = db.query(
+        DiscoveryJob.status,
+        func.count(DiscoveryJob.id).label('count')
+    ).group_by(DiscoveryJob.status).all()
+    job_counts = {s: c for s, c in job_count_rows}
+
+    pending_jobs = job_counts.get('pending', 0)
+    processing_jobs = job_counts.get('processing', 0)
+    completed_jobs = job_counts.get('completed', 0)
+    failed_jobs = job_counts.get('failed', 0)
+
+    # 5. Job queue rows (needs actual rows with ordering)
     queue_jobs = db.query(DiscoveryJob).filter(
         DiscoveryJob.status.in_(['pending', 'processing'])
     ).order_by(DiscoveryJob.created_at.desc()).limit(20).all()
-    
+
     job_queue = [
         JobQueueItem(
             id=job.id,
@@ -143,69 +201,74 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
         )
         for job in queue_jobs
     ]
-    
-# Service status
+
+    # Service status (no DB query)
     services_status = process_manager.get_health_status()
-
-    # Queue depths per pipeline stage
-    discovery_queue = db.query(DiscoveryJob).filter(DiscoveryJob.status == 'pending').count()
-    browsing_queue = db.query(Company).filter(
-        Company.status == 'discovered'
-    ).count()
-    enrichment_queue = db.query(Company).filter(Company.status == 'browsed').count()
-    verification_queue = db.query(Contact).filter(Contact.verification_status == 'pending').count()
-
-    # Processed counts per stage
-    discovery_processed = db.query(DiscoveryJob).filter(DiscoveryJob.status == 'completed').count()
-    browsing_processed = db.query(Company).filter(Company.status == 'browsed').count()
-    enrichment_processed = db.query(Company).filter(Company.status == 'enriched').count()
-    verification_processed = db.query(Contact).filter(Contact.is_verified == True).count()
-
-    # Build service status lookup
     services_lookup = {s['name']: s for s in services_status.get('services', [])}
 
-    # Build pipeline object matching frontend expectations
-    pipeline = {
-        'discovery': {
-            'status': services_lookup.get('discovery', {}).get('status', 'stopped'),
-            'queue': discovery_queue,
-            'uptime': _format_uptime(services_lookup.get('discovery', {}).get('uptime')),
-            'processed': discovery_processed,
-        },
-        'browsing': {
-            'status': services_lookup.get('browsing', {}).get('status', 'stopped'),
-            'queue': browsing_queue,
-            'uptime': _format_uptime(services_lookup.get('browsing', {}).get('uptime')),
-            'processed': browsing_processed,
-        },
-        'enrichment': {
-            'status': services_lookup.get('enrichment', {}).get('status', 'stopped'),
-            'queue': enrichment_queue,
-            'uptime': _format_uptime(services_lookup.get('enrichment', {}).get('uptime')),
-            'processed': enrichment_processed,
-        },
-        'verification': {
-            'status': services_lookup.get('verification', {}).get('status', 'stopped'),
-            'queue': verification_queue,
-            'uptime': _format_uptime(services_lookup.get('verification', {}).get('uptime')),
-            'processed': verification_processed,
-            'sources': {},
-        },
-    }
-
-    # Per-source verification counts for the verification node
+    # 6. Per-source verification counts (1 query)
     try:
         source_verification = db.query(
             func.coalesce(Contact.source, 'discovery').label('source'),
             func.count(Contact.id).label('total'),
             func.count(Contact.id).filter(Contact.is_verified == True).label('verified'),
         ).group_by(func.coalesce(Contact.source, 'discovery')).all()
-        pipeline['verification']['sources'] = {
+        pipeline_sources = {
             row.source: {"total": row.total, "verified": row.verified}
             for row in source_verification
         }
     except Exception as e:
         logger.warning(f"Failed to query source verification counts: {e}")
+        pipeline_sources = {}
+
+    # Pipeline — all derived from already-fetched data, no extra queries
+    try:
+        discovery_sources = _get_source_status("discovery", db)
+    except Exception:
+        discovery_sources = {}
+    try:
+        browsing_sources = _get_source_status("browsing", db)
+    except Exception:
+        browsing_sources = {}
+    try:
+        enrichment_sources = _get_source_status("enrichment", db)
+    except Exception:
+        enrichment_sources = {}
+    try:
+        verification_sources = _get_source_status("verification", db)
+    except Exception:
+        verification_sources = {}
+
+    pipeline = {
+        'discovery': {
+            'status': services_lookup.get('discovery', {}).get('status', 'stopped'),
+            'queue': pending_jobs,
+            'uptime': _format_uptime(services_lookup.get('discovery', {}).get('uptime')),
+            'processed': completed_jobs,
+            'sources': discovery_sources,
+        },
+        'browsing': {
+            'status': services_lookup.get('browsing', {}).get('status', 'stopped'),
+            'queue': company_by_status.get('discovered', 0),
+            'uptime': _format_uptime(services_lookup.get('browsing', {}).get('uptime')),
+            'processed': company_by_status.get('browsed', 0),
+            'sources': browsing_sources,
+        },
+        'enrichment': {
+            'status': services_lookup.get('enrichment', {}).get('status', 'stopped'),
+            'queue': company_by_status.get('browsed', 0),
+            'uptime': _format_uptime(services_lookup.get('enrichment', {}).get('uptime')),
+            'processed': company_by_status.get('enriched', 0),
+            'sources': enrichment_sources,
+        },
+        'verification': {
+            'status': services_lookup.get('verification', {}).get('status', 'stopped'),
+            'queue': contact_by_vstatus.get('pending', 0),
+            'uptime': _format_uptime(services_lookup.get('verification', {}).get('uptime')),
+            'processed': verified_count,
+            'sources': pipeline_sources,
+        },
+    }
 
     metrics = PipelineMetrics(
         companies_total=companies_total,
@@ -217,7 +280,7 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
         completed_jobs=completed_jobs,
         failed_jobs=failed_jobs
     )
-    
+
     return DashboardStats(
         metrics=metrics,
         job_queue=job_queue,
@@ -233,9 +296,6 @@ def get_dashboard_metrics(service: str = "discovery", window: str = "5m", db: Se
     Get time-series metrics for a service.
     Returns metrics from the ServiceMetrics table filtered by service and time window.
     """
-    from datetime import datetime, timezone, timedelta
-    from shared_models import ServiceMetrics
-    
     # Parse time window - use UTC to match DB timestamps
     window_seconds = {"5m": 300, "1h": 3600, "24h": 86400}.get(window, 300)
     now = datetime.now(timezone.utc)
@@ -341,6 +401,24 @@ async def report_verification_progress(payload: VerificationProgress):
     payload.timestamp = datetime.now(timezone.utc).isoformat()
     broadcast_update("verification_progress", payload.dict())
     return {"ok": True}
+
+
+@router.post("/source-status")
+def report_source_status(payload: SourceStatusPayload, db: Session = Depends(get_db)):
+    """Write per-source metrics from a pipeline node into ServiceMetrics."""
+    node = payload.node
+    sources = payload.sources
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    for source_name, stats in sources.items():
+        total = stats.get("total", 0)
+        success = stats.get("success", 0)
+        db.add_all([
+            ServiceMetrics(service=node, metric=f"source_{source_name}_total", value=total, recorded_at=now),
+            ServiceMetrics(service=node, metric=f"source_{source_name}_success", value=success, recorded_at=now),
+        ])
+    db.commit()
+    return {"status": "ok"}
 
 
 @router.get("/job/{job_id}/companies")

@@ -88,6 +88,12 @@
         .table th { font-size: 12px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; background: var(--bg-primary); }
         .table td { font-size: 14px; }
         .table tr:hover { background: var(--bg-primary); }
+        .clickable-row { cursor: pointer; }
+        .clickable-row:hover td:first-child { color: var(--accent); text-decoration: underline; }
+        .filter-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+        .chip { display:inline-flex;align-items:center;gap:4px;padding:3px 10px;background:var(--accent);color:#fff;border-radius:20px;font-size:12px; }
+        .chip button { background:none;border:none;color:#fff;cursor:pointer;font-size:14px;line-height:1;padding:0 2px;opacity:0.8; }
+        .chip button:hover { opacity:1; }
         
         .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 500; }
         .badge.pending { background: #fef3c7; color: #92400e; }
@@ -146,6 +152,22 @@
         .loading-spinner::after { content: ''; width: 24px; height: 24px; border: 3px solid var(--border-color); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
 
+        .sort-arrow {
+            display: inline-block;
+            min-width: 1.1em;
+            transition: none;
+        }
+        .sort-arrow.loading {
+            animation: snake-spin 0.6s ease-in-out infinite;
+        }
+        @keyframes snake-spin {
+            0%   { transform: rotate(0deg) scaleY(1); }
+            20%  { transform: rotate(90deg) scaleY(0.6); }
+            45%  { transform: rotate(180deg) scaleY(1.3); }
+            70%  { transform: rotate(270deg) scaleY(0.7); }
+            100% { transform: rotate(360deg) scaleY(1); }
+        }
+
         .modal-body { padding: 20px; }
         
         .logs-container { background: var(--bg-primary); color: var(--text-primary); padding: 16px; border-radius: 8px; font-family: monospace; font-size: 12px; max-height: 400px; overflow-y: auto; border: 1px solid var(--border-color); }
@@ -159,7 +181,7 @@
         .pipeline-map { display: flex; align-items: center; justify-content: center; gap: 0; }
         
         .pipeline-node { 
-            flex: 1 1 clamp(120px, 16vw, 180px);
+            flex: 1;
             min-width: 100px;
             max-width: 200px;
             padding: 16px 12px; 
@@ -170,6 +192,7 @@
             transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
             overflow: hidden;
         }
+        .pipeline-node[data-node="verification"].expanded { flex: 6 !important; max-width: 500px; }
         .pipeline-node.running { border-color: #3b82f6; box-shadow: 0 0 20px rgba(59,130,246,0.4), inset 0 0 20px rgba(59,130,246,0.05); }
         .pipeline-node.stopped { opacity: 0.5; border-color: #2a2d3a; }
         .pipeline-node.expanded {
@@ -442,6 +465,23 @@
         .verifier-progress .vp-status-dot.completed { background: #10b981; }
         .verifier-progress .vp-status-dot.idle { background: #64748b; }
         .vp-sources { margin-top: 6px; padding-top: 6px; border-top: 1px solid #334155; }
+        .vp-columns { display: flex; gap: 12px; }
+        .vp-left { flex: 0.5; min-width: 0; }
+        .vp-right { flex: 1.5; min-width: 0; border-left: 1px solid #334155; padding-left: 12px; }
+        .vp-breakdown .bar-row { display: flex; align-items: center; gap: 6px; padding: 3px 0; font-size: 10px; }
+        .vp-breakdown .bar-label { width: 90px; text-transform: capitalize; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .vp-breakdown .bar-track { flex: 1; height: 10px; background: var(--bg-tertiary); border-radius: 4px; overflow: hidden; }
+        .vp-breakdown .bar-fill { height: 100%; border-radius: 4px; transition: width 0.4s; }
+        .vp-breakdown .bar-count { width: 48px; text-align: right; font-weight: 600; }
+
+        .source-row { display: flex; align-items: center; gap: 6px; padding: 3px 0; font-size: 10px; }
+        .source-label { color: #94a3b8; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .source-count { color: #e2e8f0; font-weight: 600; min-width: 28px; text-align: right; }
+        .source-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+        .source-dot.success { background: #10b981; box-shadow: 0 0 5px rgba(16,185,129,0.5); }
+        .source-dot.partial { background: #f59e0b; box-shadow: 0 0 5px rgba(245,158,11,0.5); }
+        .source-dot.failed { background: #ef4444; box-shadow: 0 0 5px rgba(239,68,68,0.5); }
+        .source-dot.idle { background: #475569; }
     </style>
 <body>
     <div class="header">
@@ -455,6 +495,7 @@
                 <span class="connection-dot disconnected" id="connection-dot"></span>
                 <span id="connection-text">Connecting...</span>
             </div>
+            <span id="last-refresh" style="font-size:12px;color:var(--text-secondary);white-space:nowrap;"></span>
             <button class="btn btn-sm" id="theme-toggle" onclick="toggleTheme()" aria-label="Toggle dark mode">🌙</button>
             <button class="btn btn-secondary" onclick="viewLogs()" aria-label="View pipeline logs">Logs</button>
             <button class="btn btn-secondary" onclick="openExportModal()" aria-label="Export emails">Export</button>
@@ -489,6 +530,13 @@
                 <div class="value failed" id="failed-jobs">-</div>
             </div>
 </div>
+        
+        <div class="summary-grid" id="summary-panel" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px;display:none;">
+            <div class="stat-card">
+                <h3>Companies by Status</h3>
+                <div id="companies-by-status" style="margin-top:8px;font-size:13px;"></div>
+            </div>
+        </div>
         
         <div class="pipeline-container" id="pipeline">
             <div style="display: grid; grid-template-columns: 50px auto 1fr; grid-template-areas: 'control gap nodes'; align-items: center;">
@@ -526,6 +574,7 @@
                     <div style="height: 250px; position: relative;">
                         <canvas id="metricsChart"></canvas>
                     </div>
+                    <div id="throughput-stats" style="display:flex;gap:16px;padding:8px 12px;font-size:12px;color:var(--text-secondary);border-top:1px solid var(--border-color);margin-top:8px;"></div>
                 </div>
             </div>
             
@@ -720,20 +769,35 @@
                         <option value="verified">Verified</option>
                         <option value="failed">Failed</option>
                     </select>
+                    <select id="companies-source-filter" onchange="applyCompaniesFilters()" style="width: 130px;">
+                        <option value="">All Sources</option>
+                        <option value="imported">Imported</option>
+                        <option value="discoverer">Discoverer</option>
+                        <option value="manual">Manual</option>
+                    </select>
                 </div>
-                <div style="max-height: 60vh; overflow-y: auto;" class="styled-scroll">
+                <div id="companies-filter-chips" class="filter-chips" style="display:none;gap:6px;margin-bottom:6px;flex-wrap:wrap;"></div>
+                <div style="max-height: 60vh; overflow-y: auto; position: relative;" class="styled-scroll">
                     <table class="table">
                         <thead>
                             <tr>
-                                <th>Domain</th>
-                                <th>Industry</th>
+                                <th style="width:30px;"><input type="checkbox" id="companies-select-all" onchange="toggleSelectAll('companies')" title="Select all"></th>
+                                <th onclick="sortCompanies('domain')" style="cursor:pointer">Domain<span id="sort-domain" class="sort-arrow"></span></th>
+                                <th onclick="sortCompanies('industry')" style="cursor:pointer">Industry<span id="sort-industry" class="sort-arrow"></span></th>
                                 <th>Status</th>
-                                <th>Score</th>
-                                <th>Created</th>
+                                <th>Source</th>
+                                <th onclick="sortCompanies('discovery_score')" style="cursor:pointer" title="Discovery quality score (0–10)">Score<span id="sort-discovery_score" class="sort-arrow"></span></th>
+                                <th onclick="sortCompanies('contact_count')" style="cursor:pointer">Contacts<span id="sort-contact_count" class="sort-arrow"></span></th>
+                                <th onclick="sortCompanies('created_at')" style="cursor:pointer">Created<span id="sort-created_at" class="sort-arrow"></span></th>
                             </tr>
                         </thead>
-                        <tbody id="companies-modal-list"><tr><td colspan="5"><div class="loading-spinner"></div></td></tr></tbody>
+                        <tbody id="companies-modal-list"><tr><td colspan="8"><div class="loading-spinner"></div></td></tr></tbody>
                     </table>
+                    <div class="batch-actions" id="companies-batch-actions" style="display:none;gap:8px;padding:8px;background:var(--bg-secondary);border-top:1px solid var(--border-color);position:sticky;bottom:0;z-index:5;">
+                        <span id="companies-selected-count" style="font-size:13px;color:var(--text-secondary);"></span>
+                        <button class="btn btn-sm btn-primary" onclick="batchRequeueCompanies()">Requeue Selected</button>
+                        <button class="btn btn-sm btn-secondary" onclick="batchDeleteCompanies()" style="border-color:var(--danger);color:var(--danger);">Delete Selected</button>
+                    </div>
                 </div>
                 <div class="pagination-controls" style="display:flex;justify-content:space-between;align-items:center;padding:8px 4px;">
                     <button class="btn" id="companies-prev" onclick="prevCompaniesPage()" disabled>← Prev</button>
@@ -768,20 +832,33 @@
                         <option value="enriched">Enriched</option>
                     </select>
                 </div>
-                <div style="max-height: 60vh; overflow-y: auto;" class="styled-scroll">
+                <div id="contacts-company-badge" style="display:none;margin-bottom:6px;padding:4px 8px;background:var(--bg-tertiary);border-radius:6px;font-size:13px;align-items:center;gap:6px;">
+                    <button onclick="backToCompanies()" style="background:none;border:none;cursor:pointer;font-size:13px;color:var(--accent);padding:2px 8px 2px 4px;border-radius:4px;font-weight:500;">← Back to Companies</button>
+                    <span style="color:var(--text-secondary);">Company: <strong id="contacts-company-name"></strong></span>
+                    <button onclick="clearCompanyFilter()" style="background:none;border:none;cursor:pointer;font-size:16px;line-height:1;color:var(--text-secondary);margin-left:auto;">&times;</button>
+                </div>
+                <div id="contacts-filter-chips" class="filter-chips" style="display:none;gap:6px;margin-bottom:6px;flex-wrap:wrap;"></div>
+                <div style="max-height: 60vh; overflow-y: auto; position: relative;" class="styled-scroll">
                     <table class="table">
                         <thead>
                             <tr>
-                                <th style="width: 16%;">Email</th>
-                                <th style="width: 22%;">Job Title</th>
-                                <th style="width: 16%;">Verification</th>
-                                <th style="width: 10%;">Source</th>
-                                <th style="width: 10%;">Verified</th>
-                                <th style="width: 26%;">Created</th>
+                                <th style="width:30px;"><input type="checkbox" id="contacts-select-all" onchange="toggleSelectAll('contacts')" title="Select all"></th>
+                                <th onclick="sortContacts('email')" style="cursor:pointer;width:15%;">Email<span id="sort-cemail" class="sort-arrow"></span></th>
+                                <th onclick="sortContacts('job_title')" style="cursor:pointer;width:15%;">Job Title<span id="sort-cjob_title" class="sort-arrow"></span></th>
+                                <th style="width:13%;">Company</th>
+                                <th onclick="sortContacts('verification_status')" style="cursor:pointer;width:13%;">Verification<span id="sort-cverification_status" class="sort-arrow"></span></th>
+                                <th onclick="sortContacts('source')" style="cursor:pointer;width:10%;">Source<span id="sort-csource" class="sort-arrow"></span></th>
+                                <th onclick="sortContacts('is_verified')" style="cursor:pointer;width:9%;">Verified<span id="sort-cis_verified" class="sort-arrow"></span></th>
+                                <th onclick="sortContacts('created_at')" style="cursor:pointer;width:18%;">Created<span id="sort-ccreated_at" class="sort-arrow"></span></th>
                             </tr>
                         </thead>
-                        <tbody id="contacts-modal-list"><tr><td colspan="6"><div class="loading-spinner"></div></td></tr></tbody>
+                        <tbody id="contacts-modal-list"><tr><td colspan="8"><div class="loading-spinner"></div></td></tr></tbody>
                     </table>
+                    <div class="batch-actions" id="contacts-batch-actions" style="display:none;gap:8px;padding:8px;background:var(--bg-secondary);border-top:1px solid var(--border-color);position:sticky;bottom:0;z-index:5;">
+                        <span id="contacts-selected-count" style="font-size:13px;color:var(--text-secondary);"></span>
+                        <button class="btn btn-sm btn-primary" onclick="batchVerifyContacts()">Verify Selected</button>
+                        <button class="btn btn-sm btn-secondary" onclick="batchDeleteContacts()" style="border-color:var(--danger);color:var(--danger);">Delete Selected</button>
+                    </div>
                 </div>
                 <div class="pagination-controls" style="display:flex;justify-content:space-between;align-items:center;padding:8px 4px;">
                     <button class="btn" id="contacts-prev" onclick="prevContactsPage()" disabled>← Prev</button>
@@ -800,18 +877,18 @@
             </div>
             <div class="modal-body">
                 <div class="form-group">
-                    <input type="text" id="jobs-search" placeholder="Search by keyword..." oninput="filterJobsModal()">
+                    <input type="text" id="jobs-search" placeholder="Search by keyword..." oninput="filterJobsModal(jobsStatusFilter)">
                 </div>
                 <table class="table">
                     <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Keyword</th>
-                            <th>Region</th>
-                            <th>Status</th>
-                            <th>Results</th>
-                            <th>Created</th>
-                        </tr>
+                            <tr>
+                                <th onclick="sortJobs('id')" style="cursor:pointer">ID<span id="sort-jid" class="sort-arrow"></span></th>
+                                <th onclick="sortJobs('keyword')" style="cursor:pointer">Keyword<span id="sort-jkeyword" class="sort-arrow"></span></th>
+                                <th onclick="sortJobs('region')" style="cursor:pointer">Region<span id="sort-jregion" class="sort-arrow"></span></th>
+                                <th onclick="sortJobs('status')" style="cursor:pointer">Status<span id="sort-jstatus" class="sort-arrow"></span></th>
+                                <th onclick="sortJobs('results_count')" style="cursor:pointer">Results<span id="sort-jresults_count" class="sort-arrow"></span></th>
+                                <th onclick="sortJobs('created_at')" style="cursor:pointer">Created<span id="sort-jcreated_at" class="sort-arrow"></span></th>
+                            </tr>
                     </thead>
                     <tbody id="jobs-modal-list"><tr><td colspan="6"><div class="loading-spinner"></div></td></tr></tbody>
                 </table>
@@ -846,10 +923,13 @@ let wsReconnectDelay = 1000;
 let wsMaxReconnectDelay = 30000;
 let wsConnectedOnce = false;
 let wsMode = 'websocket'; // 'websocket' or 'polling'
+let wsInitialReceived = false;
 let pollingInterval = null;
 let dashboardIntervalId = null;
 let wsUpdateInterval = null;
 let previousCounters = {};
+let lastRefreshTime = null;
+let refreshTimerInterval = null;
 
 function updateConnectionStatus(status, text) {
     const dot = document.getElementById('connection-dot');
@@ -921,7 +1001,17 @@ function initWebSocket() {
         try {
             const message = JSON.parse(event.data);
             if (message.type === "initial") {
+                wsInitialReceived = true;
+                clearTimeout(window.dashboardFallbackTimer);
                 renderDashboardData(message.data);
+                setCachedDashboard(message.data);
+                lastRefreshTime = Date.now();
+                startRefreshTimer();
+                hideSkeleton();
+                fetch(`${API}/discovery-jobs?limit=500`)
+                    .then(r => r.json())
+                    .then(jobs => renderJobQueues(jobs))
+                    .catch(e => console.error('Failed to load jobs:', e));
             } else if (message.type === "update") {
                 if (message.data.metrics) {
                     updateDashboardMetrics(message.data.metrics);
@@ -983,15 +1073,30 @@ function scheduleReconnect() {
     }, wsReconnectDelay);
 }
 
-function switchToPolling() {
-    wsMode = 'polling';
-    updateConnectionStatus('polling', 'Polling');
-    startPolling();
-    // Restart dashboard interval as fallback
-    if (!dashboardIntervalId) {
-        dashboardIntervalId = setInterval(() => loadDashboard(), 30000);
-    }
-}
+        function updateRefreshTimestamp() {
+            const el = document.getElementById('last-refresh');
+            if (!lastRefreshTime) { el.textContent = ''; return; }
+            const seconds = Math.floor((Date.now() - lastRefreshTime) / 1000);
+            if (seconds < 5) { el.textContent = 'Updated just now'; }
+            else if (seconds < 60) { el.textContent = `Updated ${seconds}s ago`; }
+            else { const m = Math.floor(seconds / 60); el.textContent = `Updated ${m}m ago`; }
+        }
+
+        function startRefreshTimer() {
+            if (refreshTimerInterval) clearInterval(refreshTimerInterval);
+            updateRefreshTimestamp();
+            refreshTimerInterval = setInterval(updateRefreshTimestamp, 5000);
+        }
+
+        function switchToPolling() {
+            wsMode = 'polling';
+            updateConnectionStatus('polling', 'Polling');
+            startPolling();
+            // Restart dashboard interval as fallback
+            if (!dashboardIntervalId) {
+                dashboardIntervalId = setInterval(() => loadDashboard(), 30000);
+            }
+        }
 
 function startPolling() {
     if (pollingInterval) clearInterval(pollingInterval);
@@ -1091,6 +1196,26 @@ function hideSkeleton() {
   }
 }
 
+        function renderJobQueues(jobs) {
+            const completedJobs = jobs
+                .filter(j => j.status === 'completed')
+                .slice(0, 7);
+            const completedList = document.getElementById('completed-queue');
+            if (completedJobs.length === 0) {
+                completedList.innerHTML = '<div class="empty-state" style="padding:16px;">No completed jobs</div>';
+            } else {
+                completedList.innerHTML = completedJobs.map(job => `
+                    <div class="queue-item">
+                        <div>
+                            <div class="keyword">${job.keyword}</div>
+                            <div class="meta">${job.region}</div>
+                        </div>
+                        <span class="badge ${job.status}">${job.status}</span>
+                    </div>
+                `).join('');
+            }
+        }
+
         async function loadDashboard(forceRefresh = false) {
             // Try cache first for instant load
             const cached = getCachedDashboard();
@@ -1119,6 +1244,8 @@ function hideSkeleton() {
                 
                 // Update cache
                 setCachedDashboard(data);
+                lastRefreshTime = Date.now();
+                startRefreshTimer();
 
                 updateDbStatus(data.db_status);
 
@@ -1153,45 +1280,7 @@ function hideSkeleton() {
                 try {
                     const allJobsRes = await fetch(`${API}/discovery-jobs?limit=500`);
                     const allJobs = await allJobsRes.json();
-                    
-                    // Recently Completed (left) - completed status, max 7
-                    const completedJobs = allJobs
-                        .filter(j => j.status === 'completed')
-                        .slice(0, 7);
-                    
-                    const completedList = document.getElementById('completed-queue');
-                    if (completedJobs.length === 0) {
-                        completedList.innerHTML = '<div class="empty-state" style="padding:16px;">No completed jobs</div>';
-                    } else {
-                        completedList.innerHTML = completedJobs.map(job => `
-                            <div class="queue-item">
-                                <div>
-                                    <div class="keyword">${job.keyword}</div>
-                                    <div class="meta">${job.region}</div>
-                                </div>
-                                <span class="badge ${job.status}">${job.status}</span>
-                            </div>
-                        `).join('');
-                    }
-                    
-                    // Active (right) - pending + processing, no limit
-                    const activeJobs = allJobs
-                        .filter(j => j.status === 'pending' || j.status === 'processing');
-                    
-                    const activeList = document.getElementById('active-queue');
-                    if (activeJobs.length === 0) {
-                        activeList.innerHTML = '<div class="empty-state" style="padding:16px;">No active jobs</div>';
-                    } else {
-                        activeList.innerHTML = activeJobs.map(job => `
-                            <div class="queue-item">
-                                <div>
-                                    <div class="keyword">${job.keyword}</div>
-                                    <div class="meta">${job.region}</div>
-                                </div>
-                                <span class="badge ${job.status}">${job.status}</span>
-                            </div>
-                        `).join('');
-                    }
+                    renderJobQueues(allJobs);
                 } catch (err) {
                     console.error('Failed to load jobs:', err);
                 }
@@ -1256,6 +1345,74 @@ function animateCounter(element, target, duration = 1000) {
 }
 
 
+        const SOURCE_LABELS = {
+            'ddgs': 'DDGS', 'searxng': 'SearXNG', 'commoncrawl': 'CommonCrawl',
+            'httpx': 'httpx', 'playwright': 'Playwright',
+            'harvester': 'theHarvester', 'google_dorking': 'Google Dorking',
+            'sitemap': 'Sitemap', 'explicit_pages': 'Explicit Pages',
+            'homepage': 'Homepage',
+            'neverbounce': 'NeverBounce', 'zerobounce': 'ZeroBounce', 'bsdapi': 'BSD API',
+        };
+
+        function renderNodeSources(nodeKey, sources) {
+            if (!sources || Object.keys(sources).length === 0) return '';
+            const keys = Object.keys(sources);
+            const labelMap = SOURCE_LABELS;
+            return keys.map(k => {
+                const s = sources[k];
+                const total = s.total || 0;
+                const success = s.success || 0;
+                let status = 'idle';
+                if (total > 0 && success === total) status = 'success';
+                else if (total > 0 && success > 0) status = 'partial';
+                else if (total > 0 && success === 0) status = 'failed';
+                const label = labelMap[k] || k;
+                const countStr = total > 0 ? total : '';
+                return `<div class="source-row"><span class="source-dot ${status}"></span><span class="source-label">${label}</span><span class="source-count">${countStr}</span></div>`;
+            }).join('');
+        }
+
+        const STATUS_COLORS = {
+            'discovered': '#3b82f6', 'browsing': '#8b5cf6', 'browsed': '#6366f1',
+            'requeued': '#f59e0b', 'enriching': '#ec4899', 'enriched': '#10b981',
+            'enrich_requeued': '#f97316', 'failed': '#ef4444', 'verified': '#10b981',
+            'pending': '#f59e0b', 'valid_verified': '#059669', 'valid_disposable': '#94a3b8',
+            'no_mx_records': '#f97316', 'invalid_syntax': '#ef4444',
+        };
+        function renderStatusBreakdown(badgeId, items) {
+            const el = document.getElementById(badgeId);
+            if (!items || items.length === 0) { el.innerHTML = '<div style="color:var(--text-secondary);padding:4px 0;">No data</div>'; return; }
+            const total = items.reduce((s, i) => s + i.count, 0);
+            el.innerHTML = items.map(i => {
+                const pct = total > 0 ? (i.count / total * 100) : 0;
+                const color = STATUS_COLORS[i.status || i.verification_status] || '#94a3b8';
+                return `<div style="display:flex;align-items:center;gap:8px;padding:3px 0;">
+                    <span style="width:90px;text-transform:capitalize;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${i.status || i.verification_status || 'unknown'}</span>
+                    <div style="flex:1;height:14px;background:var(--bg-tertiary);border-radius:8px;overflow:hidden;">
+                        <div style="width:${pct}%;height:100%;background:${color};border-radius:8px;transition:width 0.4s;"></div>
+                    </div>
+                    <span style="width:50px;text-align:right;font-weight:600;">${i.count.toLocaleString()}</span>
+                </div>`;
+            }).join('');
+        }
+
+        function renderVpBreakdown(items) {
+            const el = document.getElementById('vp-breakdown');
+            if (!el) return;
+            if (!items || items.length === 0) { el.innerHTML = ''; return; }
+            const total = items.reduce((s, i) => s + i.count, 0);
+            el.innerHTML = '<div style="font-size:9px;color:var(--text-secondary);margin-bottom:4px;">Contacts by Status</div>' +
+            items.map(i => {
+                const pct = total > 0 ? (i.count / total * 100) : 0;
+                const color = STATUS_COLORS[i.verification_status || i.status] || '#94a3b8';
+                return `<div class="bar-row">
+                    <span class="bar-label">${i.verification_status || i.status || 'unknown'}</span>
+                    <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${color};"></div></div>
+                    <span class="bar-count">${i.count.toLocaleString()}</span>
+                </div>`;
+            }).join('');
+        }
+
         function renderDashboardData(data) {
             // Reset exponential backoff after successful refresh
             window.serviceActionCount = 0;
@@ -1270,6 +1427,14 @@ function animateCounter(element, target, duration = 1000) {
             animateCounter(document.getElementById('completed-jobs'), data.metrics.completed_jobs);
             animateCounter(document.getElementById('failed-jobs'), data.metrics.failed_jobs);
             renderPipelineMap(data.pipeline);
+
+            // Render status breakdown
+            const summaryEl = document.getElementById('summary-panel');
+            if (data.metrics.companies_by_status && data.metrics.companies_by_status.length > 0) {
+                summaryEl.style.display = 'grid';
+                renderStatusBreakdown('companies-by-status', data.metrics.companies_by_status);
+                renderVpBreakdown(data.metrics.contacts_by_verification);
+            }
         }
         
         let metricsChart = null;
@@ -1433,6 +1598,40 @@ function animateCounter(element, target, duration = 1000) {
                     });
                 }
                 
+                // Calculate throughput from time-series data
+                const throughputEl = document.getElementById('throughput-stats');
+                if (data.data.length >= 2) {
+                    const first = data.data[0];
+                    const last = data.data[data.data.length - 1];
+                    const timeSpan = (new Date(last.timestamp) - new Date(first.timestamp)) / 1000 / 60;
+                    if (timeSpan > 0) {
+                        const items = [];
+                        if (metricsService === 'all') {
+                            Object.keys(servicePrimaryMetrics).forEach(svc => {
+                                const key = `${svc}_${servicePrimaryMetrics[svc]}`;
+                                const fv = first[key] || 0;
+                                const lv = last[key] || 0;
+                                const rate = ((lv - fv) / timeSpan * 60).toFixed(1);
+                                const color = serviceColors[svc] || '#3b82f6';
+                                items.push(`<span style="color:${color}"><strong>${svc}</strong> ${rate}/h</span>`);
+                            });
+                        } else {
+                            Array.from(allMetricKeys).slice(0, 4).forEach(metric => {
+                                const values = data.data.map(d => d[metric] || 0);
+                                const fv = values[0];
+                                const lv = values[values.length - 1];
+                                const rate = ((lv - fv) / timeSpan * 60).toFixed(1);
+                                const color = metricColors[metric] || '#3b82f6';
+                                items.push(`<span style="color:${color}"><strong>${metric}</strong> ${rate}/h</span>`);
+                            });
+                        }
+                        throughputEl.innerHTML = items.join('');
+                        throughputEl.style.display = 'flex';
+                    }
+                } else {
+                    throughputEl.style.display = 'none';
+                }
+
                 // Update existing chart in place (no destroy), or create new one
                 if (metricsChart) {
                     if (metricsChart._service === metricsService && 
@@ -1523,8 +1722,6 @@ function animateCounter(element, target, duration = 1000) {
                 { key: 'verification', label: 'Verification' }
             ];
             
-            const sources = pipeline.sources || { ddgs: {}, searxng: {}, commoncrawl: {}, theharvester: {} };
-            
             // Check if already rendered (7 children = 4 pipeline nodes + 3 connectors)
             const isRendered = container.children.length === 7
                 && container.children[0].classList.contains('pipeline-node');
@@ -1558,17 +1755,8 @@ function animateCounter(element, target, duration = 1000) {
                     
                     // Update source statuses inside sub-nodes
                     const subEl = child.querySelector('.sub-nodes');
-                    if (subEl) {
-                        if (node.key === 'verification') {
-                            // Verifier progress is updated via WebSocket, not here
-                        } else {
-                            const subs = subEl.children;
-                            const srcLabels = ['DDGS:', 'SearXNG:', 'CommonCrawl:', 'theHarvester:'];
-                            const srcKeys = ['ddgs', 'searxng', 'commoncrawl', 'theharvester'];
-                            for (let si = 0; si < subs.length && si < srcKeys.length; si++) {
-                                subs[si].innerHTML = '<span class="sub-label">' + srcLabels[si] + '</span> ' + (sources[srcKeys[si]]?.status || 'N/A');
-                            }
-                        }
+                    if (subEl && node.key !== 'verification') {
+                        subEl.innerHTML = renderNodeSources(node.key, (data && data.sources) || {});
                     }
                     
                     // Update connector after this node (except last)
@@ -1597,7 +1785,7 @@ function animateCounter(element, target, duration = 1000) {
                     const status = data.status || 'stopped';
                     const queueLevel = data.queue > 50 ? 'high' : data.queue > 10 ? 'medium' : 'low';
                     
-                    html += `<div class="pipeline-node ${status}" onclick="toggleSubNodes('${node.key}')">
+                    html += `<div class="pipeline-node ${status}" data-node="${node.key}" onclick="toggleSubNodes('${node.key}')">
                         <div class="pipeline-node-name">${node.label}</div>
                         <div class="pipeline-node-divider"></div>
                         <div class="pipeline-node-stats">
@@ -1621,7 +1809,8 @@ function animateCounter(element, target, duration = 1000) {
                         <div class="node-toggle" onclick="event.stopPropagation(); toggleSubNodes('${node.key}')">${node.key === 'verification' ? '▼ Imported Contacts' : '▼ Sources'}</div>
                         <div class="sub-nodes" id="sub-${node.key}">
                             ${node.key === 'verification'
-                                ? `<div class="verifier-progress">
+                                ? `<div class="vp-columns"><div class="vp-left">
+                                <div class="verifier-progress">
                                     <div class="vp-row"><span class="vp-label">Processed</span><span class="vp-value" id="vp-processed">0</span></div>
                                     <div class="vp-row"><span class="vp-label">Verified</span><span class="vp-value verified" id="vp-verified">0</span></div>
                                     <div class="vp-row"><span class="vp-label">Failed</span><span class="vp-value failed" id="vp-failed">0</span></div>
@@ -1632,11 +1821,11 @@ function animateCounter(element, target, duration = 1000) {
                                     ${Object.entries(data.sources || {}).map(([name, s]) =>
                                         `<div class="sub-node"><span class="sub-label">${name}:</span> ${(s.verified || 0).toLocaleString()} / ${(s.total || 0).toLocaleString()} verified</div>`
                                     ).join('')}
-                                </div>`
-                                : `<div class="sub-node"><span class="sub-label">DDGS:</span> ${sources.ddgs?.status || 'N/A'}</div>
-                                   <div class="sub-node"><span class="sub-label">SearXNG:</span> ${sources.searxng?.status || 'N/A'}</div>
-                                   <div class="sub-node"><span class="sub-label">CommonCrawl:</span> ${sources.commoncrawl?.status || 'N/A'}</div>
-                                   <div class="sub-node"><span class="sub-label">theHarvester:</span> ${sources.theharvester?.status || 'N/A'}</div>`
+                                </div>
+                                </div><div class="vp-right">
+                                <div class="vp-breakdown" id="vp-breakdown"></div>
+                                </div></div>`
+                                : renderNodeSources(node.key, data.sources || {})
                             }
                         </div>
                         <div class="service-controls" id="sc-${node.key}" style="display:none;">
@@ -1715,15 +1904,7 @@ function animateCounter(element, target, duration = 1000) {
                 }
                 const subEl = child.querySelector('.sub-nodes');
                 if (subEl && key !== 'verification') {
-                    const subs = subEl.children;
-                    const srcKeys = ['ddgs', 'searxng', 'commoncrawl', 'theharvester'];
-                    const sources = pipeline.sources || {};
-                    for (let si = 0; si < subs.length && si < srcKeys.length; si++) {
-                        const label = subs[si].querySelector('.sub-label');
-                        if (label) {
-                            subs[si].innerHTML = '<span class="sub-label">' + label.textContent + '</span> ' + (sources[srcKeys[si]]?.status || 'N/A');
-                        }
-                    }
+                    subEl.innerHTML = renderNodeSources(key, (data && data.sources) || {});
                 }
                 if (i < nodes.length - 1) {
                     const conn = container.children[i * 2 + 1];
@@ -2217,11 +2398,127 @@ function animateCounter(element, target, duration = 1000) {
             document.getElementById('bulk-job-modal').classList.add('active');
         }
         
+        // --- Batch selection state ---
+        let contactsSelected = new Set();
+        let companiesSelected = new Set();
+
+        function getSelectedIds(type) {
+            return Array.from(document.querySelectorAll(`.${type}-select:checked`)).map(cb => parseInt(cb.value));
+        }
+
+        function updateBatchActions(type) {
+            const prefix = type === 'contacts' ? 'contacts' : 'companies';
+            const ids = getSelectedIds(type);
+            const actions = document.getElementById(`${prefix}-batch-actions`);
+            if (ids.length === 0) {
+                actions.style.display = 'none';
+                return;
+            }
+            actions.style.display = 'flex';
+            document.getElementById(`${prefix}-selected-count`).textContent = `${ids.length} selected`;
+        }
+
+        function toggleSelectAll(type) {
+            const prefix = type === 'contacts' ? 'contacts' : 'companies';
+            const checked = document.getElementById(`${prefix}-select-all`).checked;
+            document.querySelectorAll(`.${prefix}-select`).forEach(cb => cb.checked = checked);
+            updateBatchActions(type);
+        }
+
+        async function batchVerifyContacts() {
+            const ids = getSelectedIds('contacts');
+            if (ids.length === 0) return;
+            if (!confirm(`Verify ${ids.length} contact(s)?`)) return;
+            try {
+                const res = await fetch(`${API}/contacts/batch/verify`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({contact_ids: ids}),
+                });
+                const data = await res.json();
+                showToast(`Verification started for ${data.total} contacts`, 'success');
+                fetchContacts();
+            } catch (e) {
+                showToast('Failed to start verification', 'error');
+            }
+        }
+
+        async function batchDeleteContacts() {
+            const ids = getSelectedIds('contacts');
+            if (ids.length === 0) return;
+            if (!confirm(`Delete ${ids.length} contact(s)? This cannot be undone.`)) return;
+            try {
+                const res = await fetch(`${API}/contacts/batch/delete`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({contact_ids: ids}),
+                });
+                const data = await res.json();
+                showToast(`Deleted ${data.deleted} contacts`, 'success');
+                fetchContacts();
+            } catch (e) {
+                showToast('Failed to delete contacts', 'error');
+            }
+        }
+
+        async function batchRequeueCompanies() {
+            const ids = getSelectedIds('companies');
+            if (ids.length === 0) return;
+            if (!confirm(`Requeue ${ids.length} compan(ies) for reprocessing?`)) return;
+            try {
+                const res = await fetch(`${API}/companies/batch/requeue`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({company_ids: ids}),
+                });
+                const data = await res.json();
+                showToast(`Requeued ${data.requeued} companies`, 'success');
+                fetchCompanies();
+            } catch (e) {
+                showToast('Failed to requeue companies', 'error');
+            }
+        }
+
+        async function batchDeleteCompanies() {
+            const ids = getSelectedIds('companies');
+            if (ids.length === 0) return;
+            if (!confirm(`Delete ${ids.length} compan(ies) and their contacts? This cannot be undone.`)) return;
+            try {
+                const res = await fetch(`${API}/companies/batch/delete`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({company_ids: ids}),
+                });
+                const data = await res.json();
+                showToast(`Deleted ${data.companies_deleted} companies and ${data.contacts_deleted} contacts`, 'success');
+                fetchCompanies();
+            } catch (e) {
+                showToast('Failed to delete companies', 'error');
+            }
+        }
+
         // --- Companies pagination state ---
         let companiesPage = 1, companiesTotal = 0, companiesPages = 0;
-        let companiesSearch = '', companiesStatus = '';
-        let companiesLoading = false;
+        let companiesSearch = '', companiesStatus = '', companiesSource = '';
+        let companiesSortBy = 'created_at', companiesSortOrder = 'desc';
+        let companiesController = null;
         let companiesSearchDebounce = null;
+        let companiesSortDebounce = null;
+
+        function sortCompanies(column) {
+            if (companiesSortBy === column) {
+                companiesSortOrder = companiesSortOrder === 'asc' ? 'desc' : 'asc';
+            } else {
+                companiesSortBy = column;
+                companiesSortOrder = column === 'created_at' ? 'desc' : 'asc';
+            }
+            companiesPage = 1;
+            document.querySelectorAll('.sort-arrow').forEach(el => el.classList.remove('loading'));
+            const el = document.getElementById('sort-' + column);
+            if (el) el.classList.add('loading');
+            clearTimeout(companiesSortDebounce);
+            companiesSortDebounce = setTimeout(fetchCompanies, 300);
+        }
 
         function onCompaniesSearchInput() {
             clearTimeout(companiesSearchDebounce);
@@ -2231,49 +2528,126 @@ function animateCounter(element, target, duration = 1000) {
         function applyCompaniesFilters() {
             companiesSearch = document.getElementById('companies-search').value;
             companiesStatus = document.getElementById('companies-filter').value;
+            companiesSource = document.getElementById('companies-source-filter').value;
             companiesPage = 1;
             fetchCompanies();
         }
 
         async function fetchCompanies() {
-            if (companiesLoading) return;
-            companiesLoading = true;
+            if (companiesController) companiesController.abort();
+            const controller = new AbortController();
+            companiesController = controller;
             try {
                 let url = `${API}/companies?page=${companiesPage}&limit=500`;
                 if (companiesSearch) url += `&search=${encodeURIComponent(companiesSearch)}`;
                 if (companiesStatus) url += `&status=${companiesStatus}`;
-                const res = await fetch(url);
+                if (companiesSource) url += `&lead_source=${companiesSource}`;
+                url += `&sort_by=${companiesSortBy}&sort_order=${companiesSortOrder}`;
+                const res = await fetch(url, { signal: controller.signal });
                 const data = await res.json();
+                if (controller !== companiesController) return;
+                if (!data || !Array.isArray(data.items)) {
+                    console.error('Invalid companies response:', data);
+                    throw new Error('Invalid API response format');
+                }
                 companiesTotal = data.total;
                 companiesPages = data.pages;
                 renderCompanies(data.items);
             } catch (e) {
+                if (e.name === 'AbortError') return;
                 console.error('Failed to load companies:', e);
-                document.getElementById('companies-modal-list').innerHTML = '<tr><td colspan="5" class="empty-state">Failed to load companies</td></tr>';
-            } finally {
-                companiesLoading = false;
+                document.getElementById('companies-modal-list').innerHTML = '<tr><td colspan="8" class="empty-state">Failed to load companies</td></tr>';
+                document.querySelectorAll('.sort-arrow').forEach(el => el.classList.remove('loading'));
+            }
+        }
+
+        document.addEventListener('click', function(e) {
+            const chipRemove = e.target.closest('.chip-remove');
+            if (!chipRemove) return;
+            const chip = chipRemove.closest('.chip');
+            const action = chip?.dataset.action;
+            const container = chip?.closest('.filter-chips');
+            if (!container || !action) return;
+            const id = container.id;
+            if (id === 'companies-filter-chips') {
+                if (action === 'clearSearch') { document.getElementById('companies-search').value = ''; companiesSearch = ''; applyCompaniesFilters(); }
+                if (action === 'clearStatus') { document.getElementById('companies-filter').value = ''; companiesStatus = ''; applyCompaniesFilters(); }
+                if (action === 'clearSource') { document.getElementById('companies-source-filter').value = ''; companiesSource = ''; applyCompaniesFilters(); }
+            } else if (id === 'contacts-filter-chips') {
+                if (action === 'clearSearch') { document.getElementById('contacts-search').value = ''; contactsSearch = ''; applyContactsFilters(); }
+                if (action === 'clearStatus') { document.getElementById('contacts-filter').value = ''; contactsStatus = ''; applyContactsFilters(); }
+            }
+        });
+
+        function scoreBadge(score) {
+            const color = score >= 7 ? '#10b981' : score >= 4 ? '#f59e0b' : '#94a3b8';
+            return `<span style="color:${color};font-weight:600;">${score}</span>`;
+        }
+
+        function renderFilterChips(containerId, filters) {
+            const container = document.getElementById(containerId);
+            const chips = [];
+            if (filters._search) chips.push({ label: `Search: "${filters._search}"`, action: 'clearSearch' });
+            if (filters._status) chips.push({ label: `${filters.statusLabel}: ${filters._status}`, action: 'clearStatus' });
+            if (filters._source) chips.push({ label: `${filters.sourceLabel}: ${filters._source}`, action: 'clearSource' });
+            if (chips.length === 0) { container.style.display = 'none'; container.innerHTML = ''; return; }
+            container.style.display = 'flex';
+            container.innerHTML = chips.map(c => `<span class="chip" data-action="${c.action}">${c.label}<button class="chip-remove">&times;</button></span>`).join('');
+        }
+
+        function updateSortArrows() {
+            document.querySelectorAll('.sort-arrow').forEach(el => el.classList.remove('loading'));
+            for (const col of ['domain', 'industry', 'discovery_score', 'contact_count', 'created_at']) {
+                const el = document.getElementById('sort-' + col);
+                if (!el) continue;
+                if (companiesSortBy === col) {
+                    el.textContent = companiesSortOrder === 'asc' ? ' \u2191' : ' \u2193';
+                } else {
+                    el.textContent = ' \u2195';
+                }
             }
         }
 
         function renderCompanies(items) {
+            if (!items) items = [];
             const tbody = document.getElementById('companies-modal-list');
             if (items.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No companies found</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No companies found</td></tr>';
             } else {
                 tbody.innerHTML = items.map(c => `
-                    <tr>
+                    <tr class="clickable-row" onclick="drillToCompany(${c.id}, '${c.domain.replace(/'/g, "\\'")}')">
+                        <td style="width:30px;"><input type="checkbox" class="row-select companies-select" value="${c.id}" onclick="event.stopPropagation();updateBatchActions('companies')"></td>
                         <td>${c.domain}</td>
                         <td>${c.industry || '-'}</td>
-                        <td><span class="badge ${c.status}">${c.status}</span></td>
-                        <td>${c.discovery_score}</td>
+                        <td><span class="badge ${c.status}" onclick="event.stopPropagation();filterByCompanyStatus('${c.status.replace(/'/g, "\\'")}')" style="cursor:pointer;">${c.status}</span></td>
+                        <td><span class="badge source-${c.lead_source || 'manual'}">${c.lead_source || '-'}</span></td>
+                        <td>${scoreBadge(c.discovery_score)}</td>
+                        <td>${c.contact_count || 0}</td>
                         <td>${c.created_at ? new Date(c.created_at).toLocaleDateString() : '-'}</td>
                     </tr>
                 `).join('');
+                document.getElementById('companies-select-all').checked = false;
             }
-            const start = (companiesPage - 1) * 2000 + 1;
-            const end = Math.min(companiesPage * 2000, companiesTotal);
-            document.getElementById('companies-page-info').textContent =
-                `Showing ${start}–${end} of ${companiesTotal.toLocaleString()} companies`;
+            updateSortArrows();
+            renderFilterChips('companies-filter-chips', {
+                _search: companiesSearch,
+                _status: companiesStatus,
+                _source: companiesSource,
+                statusLabel: 'Status',
+                sourceLabel: 'Source',
+                _clearSearch: () => { document.getElementById('companies-search').value = ''; companiesSearch = ''; applyCompaniesFilters(); },
+                _clearStatus: () => { document.getElementById('companies-filter').value = ''; companiesStatus = ''; applyCompaniesFilters(); },
+                _clearSource: () => { document.getElementById('companies-source-filter').value = ''; companiesSource = ''; applyCompaniesFilters(); },
+            });
+            if (companiesTotal === 0) {
+                document.getElementById('companies-page-info').textContent = 'No companies found';
+            } else {
+                const start = (companiesPage - 1) * 500 + 1;
+                const end = Math.min(companiesPage * 500, companiesTotal);
+                const suffix = (companiesSearch || companiesStatus || companiesSource) ? ' (filtered)' : ' companies';
+                document.getElementById('companies-page-info').textContent =
+                    `Showing ${start}–${end} of ${companiesTotal.toLocaleString()}${suffix}`;
+            }
             document.getElementById('companies-prev').disabled = companiesPage <= 1;
             document.getElementById('companies-next').disabled = companiesPage >= companiesPages;
         }
@@ -2283,9 +2657,21 @@ function animateCounter(element, target, duration = 1000) {
             document.getElementById('companies-search').value = '';
             companiesSearch = '';
             companiesStatus = '';
+            companiesSource = '';
             document.getElementById('companies-filter').value = '';
+            document.getElementById('companies-source-filter').value = '';
             companiesPage = 1;
+            companiesSortBy = 'created_at';
+            companiesSortOrder = 'desc';
+            updateSortArrows();
             await fetchCompanies();
+        }
+
+        function filterByCompanyStatus(status) {
+            document.getElementById('companies-filter').value = status;
+            companiesStatus = status;
+            companiesPage = 1;
+            fetchCompanies();
         }
 
         function prevCompaniesPage() {
@@ -2299,8 +2685,11 @@ function animateCounter(element, target, duration = 1000) {
         // --- Contacts pagination state ---
         let contactsPage = 1, contactsTotal = 0, contactsPages = 0;
         let contactsSearch = '', contactsStatus = '', contactsSource = '';
-        let contactsLoading = false;
+        let contactsCompanyId = null;
+        let contactsSortBy = 'created_at', contactsSortOrder = 'desc';
+        let contactsController = null;
         let contactsSearchDebounce = null;
+        let contactsSortDebounce = null;
 
         function onContactsSearchInput() {
             clearTimeout(contactsSearchDebounce);
@@ -2315,9 +2704,38 @@ function animateCounter(element, target, duration = 1000) {
             fetchContacts();
         }
 
+        function sortContacts(column) {
+            if (contactsSortBy === column) {
+                contactsSortOrder = contactsSortOrder === 'asc' ? 'desc' : 'asc';
+            } else {
+                contactsSortBy = column;
+                contactsSortOrder = column === 'created_at' ? 'desc' : 'asc';
+            }
+            contactsPage = 1;
+            document.querySelectorAll('#contacts-modal .sort-arrow').forEach(el => el.classList.remove('loading'));
+            const el = document.getElementById('sort-c' + column);
+            if (el) el.classList.add('loading');
+            clearTimeout(contactsSortDebounce);
+            contactsSortDebounce = setTimeout(fetchContacts, 300);
+        }
+
+        function updateContactsSortArrows() {
+            document.querySelectorAll('#contacts-modal .sort-arrow').forEach(el => el.classList.remove('loading'));
+            for (const col of ['email', 'job_title', 'verification_status', 'source', 'is_verified', 'created_at']) {
+                const el = document.getElementById('sort-c' + col);
+                if (!el) continue;
+                if (contactsSortBy === col) {
+                    el.textContent = contactsSortOrder === 'asc' ? ' \u2191' : ' \u2193';
+                } else {
+                    el.textContent = ' \u2195';
+                }
+            }
+        }
+
         async function fetchContacts() {
-            if (contactsLoading) return;
-            contactsLoading = true;
+            if (contactsController) contactsController.abort();
+            const controller = new AbortController();
+            contactsController = controller;
             try {
                 let url = `${API}/contacts?page=${contactsPage}&limit=500`;
                 if (contactsSearch) url += `&search=${encodeURIComponent(contactsSearch)}`;
@@ -2326,44 +2744,63 @@ function animateCounter(element, target, duration = 1000) {
                     url += `&verification_status=${sv}`;
                 }
                 if (contactsSource) url += `&source=${contactsSource}`;
-                const res = await fetch(url);
+                if (contactsCompanyId) url += `&company_id=${contactsCompanyId}`;
+                url += `&sort_by=${contactsSortBy}&sort_order=${contactsSortOrder}`;
+                const res = await fetch(url, { signal: controller.signal });
                 const data = await res.json();
+                if (controller !== contactsController) return;
                 contactsTotal = data.total;
                 contactsPages = data.pages;
                 renderContacts(data.items);
             } catch (e) {
+                if (e.name === 'AbortError') return;
                 console.error('Failed to load contacts:', e);
-                document.getElementById('contacts-modal-list').innerHTML = '<tr><td colspan="6" class="empty-state">Failed to load contacts</td></tr>';
-            } finally {
-                contactsLoading = false;
+                document.getElementById('contacts-modal-list').innerHTML = '<tr><td colspan="8" class="empty-state">Failed to load contacts</td></tr>';
+                document.querySelectorAll('#contacts-modal .sort-arrow').forEach(el => el.classList.remove('loading'));
             }
         }
 
         function renderContacts(items) {
             const tbody = document.getElementById('contacts-modal-list');
             if (items.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No contacts found</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No contacts found</td></tr>';
             } else {
                 tbody.innerHTML = items.map(c => `
                     <tr>
-                        <td style="width: 16%;">${c.email}</td>
-                        <td style="width: 22%;">${c.job_title || '-'}</td>
-                        <td style="width: 16%;"><span class="badge ${c.verification_status}">${c.verification_status}</span></td>
-                        <td style="width: 10%;"><span class="badge source-${c.source || 'enriched'}">${c.source || 'enriched'}</span></td>
-                        <td style="width: 10%;">${c.is_verified ? 'Yes' : 'No'}</td>
-                        <td style="width: 26%;">${c.created_at ? new Date(c.created_at).toLocaleDateString() : '-'}</td>
+                        <td style="width:30px;"><input type="checkbox" class="row-select contacts-select" value="${c.id}" onchange="updateBatchActions('contacts')"></td>
+                        <td>${c.email}</td>
+                        <td>${c.job_title || '-'}</td>
+                        <td>${c.company_domain || '-'}</td>
+                        <td><span class="badge ${c.verification_status}">${c.verification_status}</span></td>
+                        <td><span class="badge source-${c.source || 'enriched'}">${c.source || 'enriched'}</span></td>
+                        <td>${c.is_verified ? 'Yes' : 'No'}</td>
+                        <td>${c.created_at ? new Date(c.created_at).toLocaleDateString() : '-'}</td>
                     </tr>
                 `).join('');
+                document.getElementById('contacts-select-all').checked = false;
             }
-            const start = (contactsPage - 1) * 2000 + 1;
-            const end = Math.min(contactsPage * 2000, contactsTotal);
-            document.getElementById('contacts-page-info').textContent =
-                `Showing ${start}–${end} of ${contactsTotal.toLocaleString()} contacts`;
+            updateContactsSortArrows();
+            renderFilterChips('contacts-filter-chips', {
+                _search: contactsSearch,
+                _status: contactsStatus,
+                statusLabel: 'Status',
+                _clearSearch: () => { document.getElementById('contacts-search').value = ''; contactsSearch = ''; applyContactsFilters(); },
+                _clearStatus: () => { document.getElementById('contacts-filter').value = ''; contactsStatus = ''; applyContactsFilters(); },
+            });
+            if (contactsTotal === 0) {
+                document.getElementById('contacts-page-info').textContent = 'No contacts found';
+            } else {
+                const start = (contactsPage - 1) * 500 + 1;
+                const end = Math.min(contactsPage * 500, contactsTotal);
+                const suffix = (contactsSearch || contactsStatus || contactsSource || contactsCompanyId) ? ' (filtered)' : ' contacts';
+                document.getElementById('contacts-page-info').textContent =
+                    `Showing ${start}–${end} of ${contactsTotal.toLocaleString()}${suffix}`;
+            }
             document.getElementById('contacts-prev').disabled = contactsPage <= 1;
             document.getElementById('contacts-next').disabled = contactsPage >= contactsPages;
         }
 
-        async function showContactsModal(initialFilter = '') {
+        async function showContactsModal(initialFilter = '', companyId = null, companyDomain = '') {
             document.getElementById('contacts-modal').classList.add('active');
             document.getElementById('contacts-search').value = '';
             contactsSearch = '';
@@ -2377,7 +2814,37 @@ function animateCounter(element, target, duration = 1000) {
                 contactsStatus = '';
                 document.getElementById('contacts-filter').value = '';
             }
+            contactsCompanyId = companyId;
+            contactsSortBy = 'created_at';
+            contactsSortOrder = 'desc';
+            updateContactsSortArrows();
+            const badge = document.getElementById('contacts-company-badge');
+            if (companyId) {
+                document.getElementById('contacts-company-name').textContent = companyDomain;
+                badge.style.display = 'flex';
+            } else {
+                badge.style.display = 'none';
+            }
             await fetchContacts();
+        }
+
+        function backToCompanies() {
+            closeModal('contacts-modal');
+            contactsCompanyId = null;
+            document.getElementById('contacts-company-badge').style.display = 'none';
+            showCompaniesModal();
+        }
+
+        function clearCompanyFilter() {
+            contactsCompanyId = null;
+            document.getElementById('contacts-company-badge').style.display = 'none';
+            contactsPage = 1;
+            fetchContacts();
+        }
+
+        function drillToCompany(id, domain) {
+            closeModal('companies-modal');
+            showContactsModal('', id, domain);
         }
 
         function prevContactsPage() {
@@ -2389,16 +2856,53 @@ function animateCounter(element, target, duration = 1000) {
         }
         
         let allJobs = [];
+        let jobsSortBy = 'created_at', jobsSortOrder = 'desc';
+        let jobsSortDebounce = null;
+        let jobsStatusFilter = '';
         
+        function sortJobs(column) {
+            if (jobsSortBy === column) {
+                jobsSortOrder = jobsSortOrder === 'asc' ? 'desc' : 'asc';
+            } else {
+                jobsSortBy = column;
+                jobsSortOrder = column === 'created_at' ? 'desc' : 'asc';
+            }
+            document.querySelectorAll('#jobs-modal .sort-arrow').forEach(el => el.classList.remove('loading'));
+            const el = document.getElementById('sort-j' + column);
+            if (el) el.classList.add('loading');
+            clearTimeout(jobsSortDebounce);
+            jobsSortDebounce = setTimeout(() => {
+                filterJobsModal(jobsStatusFilter);
+                document.querySelectorAll('#jobs-modal .sort-arrow').forEach(el => el.classList.remove('loading'));
+            }, 300);
+        }
+
+        function updateJobsSortArrows() {
+            for (const col of ['id', 'keyword', 'region', 'status', 'results_count', 'created_at']) {
+                const el = document.getElementById('sort-j' + col);
+                if (!el) continue;
+                if (jobsSortBy === col) {
+                    el.textContent = jobsSortOrder === 'asc' ? ' \u2191' : ' \u2193';
+                } else {
+                    el.textContent = ' \u2195';
+                }
+            }
+        }
+
         async function showJobsModal(statusFilter = '') {
+            jobsStatusFilter = statusFilter;
             document.getElementById('jobs-modal-title').textContent = statusFilter ? statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1) + ' Jobs' : 'All Jobs';
             document.getElementById('jobs-modal').classList.add('active');
+            jobsSortBy = 'created_at';
+            jobsSortOrder = 'desc';
+            updateJobsSortArrows();
             try {
                 allJobs = await (await fetch(`${API}/discovery-jobs?limit=500`)).json();
                 filterJobsModal(statusFilter);
             } catch (e) {
                 console.error('Failed to load jobs:', e);
                 document.getElementById('jobs-modal-list').innerHTML = '<tr><td colspan="6" class="empty-state">Failed to load jobs</td></tr>';
+                document.querySelectorAll('#jobs-modal .sort-arrow').forEach(el => el.classList.remove('loading'));
             }
         }
         
@@ -2406,10 +2910,21 @@ function animateCounter(element, target, duration = 1000) {
             const search = document.getElementById('jobs-search').value.toLowerCase();
             const status = statusFilter || '';
             
-            const filtered = allJobs.filter(j => {
+            let filtered = allJobs.filter(j => {
                 const matchesSearch = !search || j.keyword.toLowerCase().includes(search);
                 const matchesStatus = !status || j.status === status;
                 return matchesSearch && matchesStatus;
+            });
+            
+            filtered.sort((a, b) => {
+                let aVal = a[jobsSortBy], bVal = b[jobsSortBy];
+                if (aVal == null) aVal = '';
+                if (bVal == null) bVal = '';
+                if (typeof aVal === 'string') {
+                    const cmp = aVal.localeCompare(bVal);
+                    return jobsSortOrder === 'asc' ? cmp : -cmp;
+                }
+                return jobsSortOrder === 'asc' ? (aVal - bVal) : (bVal - aVal);
             });
             
             const tbody = document.getElementById('jobs-modal-list');
@@ -2427,6 +2942,7 @@ function animateCounter(element, target, duration = 1000) {
                     </tr>
                 `).join('');
             }
+            updateJobsSortArrows();
         }
         
         function closeModal(id) {
@@ -2500,19 +3016,59 @@ function animateCounter(element, target, duration = 1000) {
             const format = document.getElementById('export-format').value;
             const verified = document.getElementById('export-verified').value === 'true';
             const search = document.getElementById('export-search').value.trim();
+            const isAll = document.getElementById('export-all').checked;
+            const limit = isAll ? 'all' : parseInt(document.getElementById('export-preview-limit').value) || 50;
             
-            let params = new URLSearchParams();
-            params.append('format', format);
-            params.append('is_verified', verified);
-            params.append('limit', 'all');
+            const downloadBtn = document.querySelector('#export-modal .btn-primary');
+            const originalText = downloadBtn.textContent;
+            downloadBtn.textContent = 'Preparing...';
+            downloadBtn.disabled = true;
             
-            if (search) {
-                params.append('search', search);
+            try {
+                let previewParams = new URLSearchParams();
+                previewParams.append('is_verified', verified);
+                previewParams.append('limit', '10');
+                if (search) previewParams.append('search', search);
+                
+                const previewRes = await fetch(`${API}/export/emails/preview?${previewParams.toString()}`);
+                const previewData = await previewRes.json();
+                const totalCount = previewData.count || 0;
+                
+                const statusEl = document.createElement('div');
+                statusEl.id = 'export-status';
+                statusEl.style.cssText = 'padding:8px;margin-top:8px;background:var(--bg-tertiary);border-radius:6px;text-align:center;font-size:13px;color:var(--text-secondary);';
+                statusEl.textContent = `Exporting ${totalCount.toLocaleString()} emails...`;
+                downloadBtn.parentNode.insertBefore(statusEl, downloadBtn.nextSibling);
+                
+                setTimeout(() => {
+                    let params = new URLSearchParams();
+                    params.append('format', format);
+                    params.append('is_verified', verified);
+                    params.append('limit', limit);
+                    if (search) params.append('search', search);
+                    
+                    const url = `${API}/export/emails?${params.toString()}`;
+                    window.open(url, '_blank');
+                    
+                    downloadBtn.textContent = originalText;
+                    downloadBtn.disabled = false;
+                    setTimeout(() => {
+                        const el = document.getElementById('export-status');
+                        if (el) el.remove();
+                    }, 2000);
+                }, 500);
+            } catch (e) {
+                let params = new URLSearchParams();
+                params.append('format', format);
+                params.append('is_verified', verified);
+                params.append('limit', limit);
+                if (search) params.append('search', search);
+                
+                const url = `${API}/export/emails?${params.toString()}`;
+                window.open(url, '_blank');
+                downloadBtn.textContent = originalText;
+                downloadBtn.disabled = false;
             }
-            
-            const url = `${API}/export/emails?${params.toString()}`;
-            window.open(url, '_blank');
-            closeModal('export-modal');
         }
 
         let importMode = 'txt';
@@ -2839,7 +3395,15 @@ function animateCounter(element, target, duration = 1000) {
         document.addEventListener('DOMContentLoaded', function() {
             updateConnectionStatus('reconnecting', 'Connecting...');
             initWebSocket();
-            loadDashboard();
+            const cached = getCachedDashboard();
+            if (cached) {
+                renderDashboardData(cached);
+                lastRefreshTime = Date.now();
+                startRefreshTimer();
+            }
+            window.dashboardFallbackTimer = setTimeout(() => {
+                if (!wsInitialReceived) loadDashboard();
+            }, 3000);
             loadPipelineMode();
             loadMetrics();
         });

@@ -22,7 +22,9 @@ class Settings:
     
     # theHarvester API config
     HARVESTER_API_URL: str = os.getenv("HARVESTER_API_URL", "http://localhost:5000")
-    HARVESTER_SOURCES: str = os.getenv("HARVESTER_SOURCES", "duckduckgo,brave,yahoo")
+    HARVESTER_SOURCES: str = os.getenv("HARVESTER_SOURCES",
+        "duckduckgo,yahoo,commoncrawl,crtsh,urlscan,waybackarchive,"
+        "otx,rapiddns,certspotter,baidu,thc,shodanInternetDB,subdomaincenter,subdomainfinderc99")
     HARVESTER_LIMIT: int = int(os.getenv("HARVESTER_LIMIT", "500"))
     
     OUTPUT_DIR: str = os.getenv("OUTPUT_DIR", "/tmp/leadgen_harvester")
@@ -35,6 +37,10 @@ class Settings:
     TARGET_EMAILS_PER_DOMAIN: int = int(os.getenv("TARGET_EMAILS_PER_DOMAIN", "10"))
     HEARTBEAT_INTERVAL: int = 10
     CRAWLER_HTTP_TIMEOUT: int = 15
+
+    # Groq LLM settings
+    GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
+    GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
 
 
 settings = Settings()

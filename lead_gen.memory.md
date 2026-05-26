@@ -18,6 +18,7 @@
 - [x] Setup process understood
 - [x] All 5 service venvs rebuilt and validated
 - [x] Dashboard API working (dashboard/stats returns data)
+- [x] `--reload` added to `run_api.sh` and `run_api_full.sh` for dev auto-restart. **REMOVE before production** (file-watcher wastes CPU and is a security risk).
 - [x] PostgreSQL authentication fixed
 - [x] Pipeline Control toggle (Auto/Manual mode) implemented
 - [x] Manual mode services not starting fixed (subprocess env + PATH)
@@ -1142,4 +1143,86 @@ Verifier (03_verification/main.py)
 | 5 | `scripts/reconcile_stats.py:43-56` | Wired `valid_statuses` into SQL `WHERE` clause |
 | 6 | All 4 service `main.py` files | Changed `logger.setLevel(logging.DEBUG)` → `logging.INFO` to match handler levels |
 
-### No outstanding issues remain.
+### Round 3: Companies Modal & Filter Debug (2026-05-25) ✅
+
+**Audit findings:**
+- Filter dropdown missing 4 real pipeline statuses (`browsing`, `requeued`, `enriching`, `enrich_requeued`)
+- `list_companies` API leaked all 29 ORM columns (no `response_model`)
+- Hardcoded `limit=500` — companies beyond 500 invisible
+- No badge CSS colors for company statuses (only `failed` had styling)
+
+**Changes:**
+
+| # | File | Change |
+|---|------|--------|
+| 1 | `04_api/templates/dashboard.html:705-716` | Added `<option>` for `browsing`, `requeued`, `enriching`, `enrich_requeued` to filter dropdown |
+| 2 | `04_api/api/v1/endpoints/companies.py:32` | Added `response_model=List[CompanyResponse]` to `list_companies` endpoint |
+| 3 | `04_api/templates/dashboard.html:2202` | Bumped fetch limit from 500 → 5000 |
+| 4 | `04_api/templates/dashboard.html:97-104` | Added badge CSS for `discovered`, `browsing`, `browsed`, `requeued`, `enriching`, `enriched`, `enrich_requeued`, `verified` |
+
+**Verified:** All 9 real company statuses now filterable with colored badges. Filter logic is consistent between frontend (`c.status === status`) and backend (`Company.status == status`). `verified` is a legitimate company status (set by verification service).
+
+### Round 4: Contacts Modal & Filter Debug (2026-05-25) ✅
+
+**Audit findings:**
+- Filter dropdown had `disposable_domain` but API returns `valid_disposable` — never matched
+- `needs_retry` and `failed` in dropdown were never set as `verification_status` — dead filters
+- `invalid` transient default is almost always overwritten by `invalid_syntax` — redundant
+- Badge CSS missing for most verification statuses — those badges rendered invisible
+- `showContactsModal` didn't clear search input on open — stale terms persisted
+- `list_contacts` API leaked all ORM columns (no `response_model`)
+
+**Changes:**
+
+| # | File | Change |
+|---|------|--------|
+| 1 | `dashboard.html:749-755` | Replaced `disposable_domain`→`valid_disposable`, added `valid_disposable` and `failed` options, removed `needs_retry` and `invalid` |
+| 2 | `dashboard.html:105-109` | Added badge CSS for `valid_verified`, `valid_disposable`, `no_mx_records`, `invalid_syntax`, `failed` |
+| 3 | `dashboard.html:2245,2250` | Clear search input on modal open; bumped fetch limit 500→5000 |
+| 4 | `contacts.py:11,42` | Added `List` import and `response_model=List[ContactResponse]` to `list_contacts` |
+| 5 | `contacts.py:316-334` | Replaced `asyncio.gather` with per-contact try/except; exceptions set `verification_status='failed'` so one bad contact doesn't crash the batch |
+| 6 | `dashboard.html:474,751` | Consolidated `verified` + `valid_verified` into single "Verified" option; JS matches both statuses; source filter distinguishes imported vs enriched |
+| 7 | `contacts.py:27-39` | Added `source: Optional[str]` to `ContactResponse` model |
+| 8 | `contacts.py:43-60` | Added `source: Optional[str] = Query(None)` param + server-side filter to `list_contacts` |
+| 9 | `dashboard.html:759-763` | Added source filter `<select>` (Imported / Enriched / All) next to status filter |
+| 10 | `dashboard.html:768-774` | Added "Source" column `<th>` between Verification and Verified with adjusted column widths |
+| 11 | `dashboard.html:2267-2302` | Updated `filterContacts()` with `matchesSource` logic; renders source badge in new Source column; colspan 5→6 |
+| 12 | `dashboard.html:109-110` | Added `.badge.source-imported` (blue) and `.badge.source-enriched` (purple) CSS |
+| 13 | `dashboard.html:109` | Removed stale `.badge.invalid` CSS class |
+
+## Phase 8: Frontend Source Status & Claude Code Skills (2026-05-26)
+
+### Source Status Tracking ✅
+| # | File | Change |
+|---|------|--------|
+| 1 | `04_api/api/v1/endpoints/dashboard.py` | Added `SourceStatusPayload` model, `PIPELINE_SOURCE_LABELS` map, `_get_source_status()` helper, `POST /source-status` endpoint; per-node `sources` in pipeline response |
+| 2 | `04_api/templates/dashboard.html` | Added `.source-dot` CSS, `SOURCE_LABELS` map, `renderNodeSources()`; replaced hardcoded sub-node templates with dynamic render calls |
+| 3 | `01_discovery/main.py` | `discover_domains_isolated()` tracks per-source domain counts; `process_job()` returns `(bool, dict)`; `run_discoverer()` POSTs aggregated stats |
+| 4 | `01_discovery/services/search_orchestration.py` | `search_domains()` now returns `(domains, source_counts)` tuple |
+| 5 | `01b_browsing/main.py` | `process_company()` returns `(bool, dict)`; `run_browser()` aggregates and POSTs per-source stats |
+| 6 | `01b_browsing/services/browser.py` | Added `_last_sources_used` module-level tracker; httpx/playwright fetchers mark success |
+| 7 | `02_enrichment/main.py` | Added POST of per-source stats in `run_enricher()` |
+
+### Claude Code Skills Installed ✅
+| # | Item | Detail |
+|---|------|--------|
+| 1 | `npx skills add anthropics/claude-code -y` | Installed all 10 skills from `anthropics/claude-code` repo to `~/.claude/plugins/marketplaces/claude-plugins-official/` |
+| 2 | `frontend-design` skill | Symlinked `~/.agents/skills/frontend-design` → actual skill dir for opencode auto-discovery |
+| 3 | `~/.agents/skills/` | Created directory; opencode auto-loads skills from here |
+
+### Next Steps
+- Restart OpenCode to activate Superpowers plugin + new skills
+- Run enrichment pipeline to test per-source status recording
+- Monitor `ServiceMetrics` table for new `source_*` metric rows
+
+### GWS CLI + Google Workspace MCP (2026-05-26)
+| # | Item | Detail |
+|---|------|--------|
+| 1 | `npm install -g @googleworkspace/cli` | Installed to `~/.npm-global` (no sudo); PATH added to `.zshrc`/`.bashrc` |
+| 2 | 95 GWS skills | Installed from `github.com/googleworkspace/cli` to `~/lead_gen/.agents/skills/` |
+| 3 | `gws mcp` not available | No MCP subcommand in `gws` v0.22.5 — used `@danielrosehill/google-workspace-mcp` instead |
+| 4 | `opencode.jsonc` | Added `google-workspace` MCP server entry with `GOOGLE_WORKSPACE_SERVICES=drive,gmail,calendar,sheets` |
+| 5 | `npx antigravity-awesome-skills` | Installed/updated 1453 skills in `~/.agents/skills/` (includes frontend-design, code-reviewer, and all prior GWS/anthropics skills) |
+| 6 | `pscale` CLI | Installed v0.284.0 from GitHub releases to `~/.npm-global/bin/` (Linux x86_64 tarball) |
+| 7 | `planetscale/database-skills` | Installed 4 skills (mysql, postgres, neki, vitess) to `~/lead_gen/.agents/skills/` |
+| 8 | `unicodeveloper/shannon` | Installed 1 skill (`shannon`) — autonomous AI pentester for web apps and APIs. Med Risk flagged. |

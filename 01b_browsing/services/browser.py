@@ -12,6 +12,7 @@ from utils.email_utils import clean_emails
 logger = logging.getLogger(__name__)
 
 _playwright_installed: Optional[bool] = None
+_last_sources_used: dict = {"httpx": False, "playwright": False}
 
 
 def _update_heartbeat(db, company_id: int) -> None:
@@ -100,6 +101,7 @@ def check_needs_playwright(html: str) -> bool:
 
 def fetch_with_httpx(domain: str) -> Tuple[str, bool]:
     """Fetch homepage with httpx. Returns (html, needs_playwright)."""
+    global _last_sources_used
     urls = [
         f"https://{domain}",
         f"https://www.{domain}",
@@ -116,6 +118,7 @@ def fetch_with_httpx(domain: str) -> Tuple[str, bool]:
             
             if response.status_code == 200:
                 html = response.text
+                _last_sources_used["httpx"] = True
                 # Rich content — skip playwright check entirely
                 if len(html) >= 2000:
                     return html, False
@@ -140,6 +143,7 @@ def fetch_with_playwright(domain: str) -> Tuple[str, Optional[str]]:
     Returns (html, error_reason). error_reason is None on success,
     or a string describing the failure.
     """
+    global _last_sources_used
     if not _check_playwright_available():
         return "", "playwright_not_installed"
 
@@ -156,6 +160,7 @@ def fetch_with_playwright(domain: str) -> Tuple[str, Optional[str]]:
                     'networkidle', timeout=settings.BROWSING_TIMEOUT_PLAYWRIGHT * 1000
                 )
                 html = page.content()
+            _last_sources_used["playwright"] = True
             logger.debug(f"Playwright fetched {url}")
             return html, None
 

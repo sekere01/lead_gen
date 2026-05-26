@@ -99,6 +99,8 @@ def create_job(job: JobCreate, db: Session = Depends(get_db)):
 @router.get("")  # response_model removed for error handling
 def list_jobs(
     status: Optional[str] = Query(None),
+    sort_by: Optional[str] = Query(None),
+    sort_order: Optional[str] = Query("desc"),
     limit: int = Query(100),
     db: Session = Depends(get_db)
 ):
@@ -107,7 +109,21 @@ def list_jobs(
         query = db.query(DiscoveryJob)
         if status:
             query = query.filter(DiscoveryJob.status == status)
-        return query.order_by(DiscoveryJob.created_at.desc()).limit(limit).all()
+        SORTABLE_JOB_COLUMNS = {
+            'id': DiscoveryJob.id,
+            'keyword': DiscoveryJob.keyword,
+            'region': DiscoveryJob.region,
+            'status': DiscoveryJob.status,
+            'results_count': DiscoveryJob.results_count,
+            'created_at': DiscoveryJob.created_at,
+        }
+        if sort_by and sort_by in SORTABLE_JOB_COLUMNS:
+            col = SORTABLE_JOB_COLUMNS[sort_by]
+            order = col.desc() if sort_order == 'desc' else col.asc()
+            query = query.order_by(order)
+        else:
+            query = query.order_by(DiscoveryJob.created_at.desc())
+        return query.limit(limit).all()
     except Exception as e:
         # Return empty list on error instead of 500
         return []

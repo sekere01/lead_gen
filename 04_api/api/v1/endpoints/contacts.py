@@ -34,6 +34,7 @@ class ContactResponse(BaseModel):
     verification_status: Optional[str]
     source: Optional[str]
     company_id: int
+    company_domain: Optional[str] = None
     created_at: Optional[datetime]
 
     class Config:
@@ -55,6 +56,8 @@ def list_contacts(
     source: Optional[str] = Query(None),
     company_id: Optional[int] = Query(None),
     search: Optional[str] = Query(None),
+    sort_by: Optional[str] = Query(None),
+    sort_order: Optional[str] = Query("desc"),
     page: int = Query(1, ge=1),
     limit: int = Query(500, ge=1, le=5000),
     db: Session = Depends(get_db)
@@ -83,7 +86,27 @@ def list_contacts(
             )
         total = query.count()
         pages = max(1, (total + limit - 1) // limit)
-        items = query.order_by(Contact.created_at.desc()).offset((page - 1) * limit).limit(limit).all()
+        SORTABLE_CONTACT_COLUMNS = {
+            'email': Contact.email,
+            'job_title': Contact.job_title,
+            'verification_status': Contact.verification_status,
+            'source': Contact.source,
+            'is_verified': Contact.is_verified,
+            'created_at': Contact.created_at,
+        }
+        if sort_by and sort_by in SORTABLE_CONTACT_COLUMNS:
+            col = SORTABLE_CONTACT_COLUMNS[sort_by]
+            order = col.desc() if sort_order == 'desc' else col.asc()
+            query = query.order_by(order)
+        else:
+            query = query.order_by(Contact.created_at.desc())
+        items = query.offset((page - 1) * limit).limit(limit).all()
+        company_ids = {c.company_id for c in items if c.company_id}
+        if company_ids:
+            rows = db.query(Company.id, Company.domain).filter(Company.id.in_(company_ids)).all()
+            domain_map = {r.id: r.domain for r in rows}
+            for c in items:
+                c.company_domain = domain_map.get(c.company_id)
         return PaginatedContacts(items=items, total=total, page=page, pages=pages, limit=limit)
     except Exception as e:
         logger.error(f"Error listing contacts: {e}")
@@ -97,6 +120,8 @@ def get_contact(contact_id: int, db: Session = Depends(get_db)):
     if not contact:
         logger.warning(f"Contact {contact_id} not found")
         raise HTTPException(status_code=404, detail="Contact not found")
+    company = db.query(Company.domain).filter(Company.id == contact.company_id).first()
+    contact.company_domain = company.domain if company else None
     logger.debug(f"Contact {contact_id}: {contact.email}")
     return contact
 
@@ -157,7 +182,7 @@ def import_contacts(req: ImportRequest, db: Session = Depends(get_db)):
                     name=domain.replace(".", " ").title(),
                     domain=domain,
                     status="discovered",
-                    lead_source="manual",
+                    lead_source="imported",
                 )
                 companies_to_create.append(c)
         if companies_to_create:
@@ -214,6 +239,9 @@ def import_contacts(req: ImportRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+class BatchContactIds(BaseModel):
+    contact_ids: List[int]
+
 class BatchVerifyRequest(BaseModel):
     source: Optional[str] = None
     company_id: Optional[int] = None
@@ -235,6 +263,57 @@ _BATCH_SIZE = 200
 _MAX_WORKERS = 5
 verify_jobs: Dict[str, dict] = {}
 
+
+@router.post("/batch/delete")
+def batch_delete_contacts(req: BatchContactIds, db: Session = Depends(get_db)):
+    """Delete multiple contacts by IDs."""
+    try:
+        deleted = db.query(Contact).filter(Contact.id.in_(req.contact_ids)).delete(synchronize_session=False)
+        db.commit()
+        logger.info(f"Batch deleted {deleted} contacts")
+        return {"deleted": deleted}
+    except Exception as e:
+        logger.exception("Batch delete contacts failed")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/batch/verify", response_model=BatchVerifyJob)
+async def batch_verify_contacts(req: BatchContactIds, db: Session = Depends(get_db)):
+    """Start async verification for specific contacts."""
+    try:
+        total = len(req.contact_ids)
+        if total == 0:
+            return BatchVerifyJob(
+                job_id="", status="completed", total=0,
+                processed=0, verified=0, failed_count=0,
+                created_at=datetime.now(timezone.utc),
+                completed_at=datetime.now(timezone.utc),
+            )
+        now = datetime.now(timezone.utc)
+        job_id = str(uuid.uuid4())
+        job = {
+            "job_id": job_id,
+            "status": "running",
+            "total": total,
+            "processed": 0,
+            "verified": 0,
+            "failed_count": 0,
+            "created_at": now,
+            "completed_at": None,
+            "error": None,
+            "contact_ids": req.contact_ids,
+            "cancelled": False,
+        }
+        verify_jobs[job_id] = job
+        asyncio.get_running_loop().create_task(_run_batch_verify(job_id))
+        return BatchVerifyJob(
+            job_id=job_id, status="running", total=total,
+            processed=0, verified=0, failed_count=0,
+            created_at=now,
+        )
+    except Exception as e:
+        logger.exception("Failed to start batch verify for contacts")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/verify-batch", response_model=BatchVerifyJob)
 async def start_batch_verify(req: BatchVerifyRequest, db: Session = Depends(get_db)):

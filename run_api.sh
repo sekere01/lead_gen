@@ -23,4 +23,5 @@ echo $$ > "$PID_FILE"
 
 # Run API from the script directory
 cd "$SCRIPT_DIR"
-./venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8000
+# DEV-ONLY: remove --reload before production (file-watcher process is wasteful/sec-risky)
+./venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload

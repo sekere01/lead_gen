@@ -34,6 +34,34 @@ class VerificationProgress(BaseModel):
     timestamp: Optional[str] = None
 
 
+class EnrichmentProgress(BaseModel):
+    companies_total: int = 0
+    companies_processed: int = 0
+    emails_collected: int = 0
+    failed_companies: int = 0
+    status: str = "idle"
+    timestamp: Optional[str] = None
+
+
+class BrowsingProgress(BaseModel):
+    companies_total: int = 0
+    companies_processed: int = 0
+    pages_browsed: int = 0
+    failed_companies: int = 0
+    status: str = "idle"
+    timestamp: Optional[str] = None
+
+
+class DiscoveryProgress(BaseModel):
+    domains_found: int = 0
+    domains_saved: int = 0
+    domains_imported: int = 0
+    sources_succeeded: int = 0
+    sources_failed: int = 0
+    status: str = "idle"
+    timestamp: Optional[str] = None
+
+
 class SourceStatusPayload(BaseModel):
     node: str
     sources: dict
@@ -400,6 +428,33 @@ async def report_verification_progress(payload: VerificationProgress):
     from datetime import datetime, timezone
     payload.timestamp = datetime.now(timezone.utc).isoformat()
     broadcast_update("verification_progress", payload.dict())
+    return {"ok": True}
+
+
+@router.post("/enrichment-progress")
+async def report_enrichment_progress(payload: EnrichmentProgress):
+    """Receive enrichment progress from enrichment service and broadcast via WebSocket."""
+    from datetime import datetime, timezone
+    payload.timestamp = datetime.now(timezone.utc).isoformat()
+    broadcast_update("enrichment_progress", payload.dict())
+    return {"ok": True}
+
+
+@router.post("/browsing-progress")
+async def report_browsing_progress(payload: BrowsingProgress):
+    """Receive browsing progress from browsing service and broadcast via WebSocket."""
+    from datetime import datetime, timezone
+    payload.timestamp = datetime.now(timezone.utc).isoformat()
+    broadcast_update("browsing_progress", payload.dict())
+    return {"ok": True}
+
+
+@router.post("/discovery-progress")
+async def report_discovery_progress(payload: DiscoveryProgress):
+    """Receive discovery progress from discovery service and broadcast via WebSocket."""
+    from datetime import datetime, timezone
+    payload.timestamp = datetime.now(timezone.utc).isoformat()
+    broadcast_update("discovery_progress", payload.dict())
     return {"ok": True}
 
 

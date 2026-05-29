@@ -12,7 +12,6 @@ from utils.email_utils import clean_emails
 logger = logging.getLogger(__name__)
 
 _playwright_installed: Optional[bool] = None
-_last_sources_used: dict = {"httpx": False, "playwright": False}
 
 
 def _update_heartbeat(db, company_id: int) -> None:
@@ -99,9 +98,10 @@ def check_needs_playwright(html: str) -> bool:
     return False
 
 
-def fetch_with_httpx(domain: str) -> Tuple[str, bool]:
+def fetch_with_httpx(domain: str, sources: dict = None) -> Tuple[str, bool]:
     """Fetch homepage with httpx. Returns (html, needs_playwright)."""
-    global _last_sources_used
+    if sources is not None:
+        sources["httpx"] = True
     urls = [
         f"https://{domain}",
         f"https://www.{domain}",
@@ -118,7 +118,6 @@ def fetch_with_httpx(domain: str) -> Tuple[str, bool]:
             
             if response.status_code == 200:
                 html = response.text
-                _last_sources_used["httpx"] = True
                 # Rich content — skip playwright check entirely
                 if len(html) >= 2000:
                     return html, False
@@ -137,13 +136,14 @@ def fetch_with_httpx(domain: str) -> Tuple[str, bool]:
     return "", False
 
 
-def fetch_with_playwright(domain: str) -> Tuple[str, Optional[str]]:
+def fetch_with_playwright(domain: str, sources: dict = None) -> Tuple[str, Optional[str]]:
     """
     Fetch homepage with Playwright (JS rendering).
     Returns (html, error_reason). error_reason is None on success,
     or a string describing the failure.
     """
-    global _last_sources_used
+    if sources is not None:
+        sources["playwright"] = True
     if not _check_playwright_available():
         return "", "playwright_not_installed"
 
@@ -160,14 +160,11 @@ def fetch_with_playwright(domain: str) -> Tuple[str, Optional[str]]:
                     'networkidle', timeout=settings.BROWSING_TIMEOUT_PLAYWRIGHT * 1000
                 )
                 html = page.content()
-            _last_sources_used["playwright"] = True
             logger.debug(f"Playwright fetched {url}")
             return html, None
 
         except ImportError as e:
             return "", f"playwright_not_installed: {e}"
-        except httpx.TimeoutException as e:
-            return "", f"playwright_timeout: {e}"
         except Exception as e:
             err_str = str(e).lower()
             if 'name' in err_str and 'headers' in err_str:
@@ -178,19 +175,21 @@ def fetch_with_playwright(domain: str) -> Tuple[str, Optional[str]]:
     return "", "all_urls_failed"
 
 
-def browse_homepage(domain: str, db=None, company_id: int = None) -> str:
+def browse_homepage(domain: str, db=None, company_id: int = None, sources: dict = None) -> str:
     """Main browse function - httpx first, escalate to Playwright if needed."""
     # Heartbeat refresh after HTTP fetch (before potentially slow Playwright)
     if db and company_id:
         _update_heartbeat(db, company_id)
     
-    html, needs_pw = fetch_with_httpx(domain)
+    html, needs_pw = fetch_with_httpx(domain, sources=sources)
     
     if not html:
         # httpx failed entirely — try Playwright
         logger.info(f"httpx failed for {domain}, trying Playwright")
-        html, pw_error = fetch_with_playwright(domain)
-        if pw_error:
+        pw_html, pw_error = fetch_with_playwright(domain, sources=sources)
+        if pw_html:
+            html = pw_html
+        elif pw_error:
             if pw_error == "playwright_not_installed":
                 logger.warning(f"Playwright not installed — skipping JS rendering for {domain}")
             elif "timeout" in pw_error:
@@ -200,8 +199,10 @@ def browse_homepage(domain: str, db=None, company_id: int = None) -> str:
     elif needs_pw:
         # httpx succeeded but content looks JS-rendered — try Playwright
         logger.info(f"httpx returned short content for {domain}, trying Playwright")
-        html, pw_error = fetch_with_playwright(domain)
-        if pw_error:
+        pw_html, pw_error = fetch_with_playwright(domain, sources=sources)
+        if pw_html:
+            html = pw_html
+        elif pw_error:
             logger.warning(f"Playwright failed for {domain}: {pw_error}")
     
     if not html:

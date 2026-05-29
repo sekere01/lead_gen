@@ -11,6 +11,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+import httpx
 from database import SessionLocal, init_db, Company, Contact, ExtractedEmail
 from config import settings
 from shared_models import Base
@@ -48,6 +49,8 @@ WATCHDOG_MINUTES = settings.BROWSING_WATCHDOG_MINUTES
 SCORE_MAX = settings.SCORE_MAX
 HEARTBEAT_INTERVAL = settings.HEARTBEAT_INTERVAL
 BROWSING_WORKERS = settings.BROWSING_WORKERS
+
+_http_client = httpx.Client(timeout=5.0)
 
 
 def update_heartbeat(company, db):
@@ -98,8 +101,8 @@ def save_emails(company_id: int, emails: list, domain: str, db) -> int:
 
 def process_company(company_id: int) -> tuple:
     """Process a single company - browse homepage and extract signals. Returns (bool, dict)."""
-    from services.browser import _last_sources_used
     source_stats = {"httpx": {"total": 0, "success": 0}, "playwright": {"total": 0, "success": 0}}
+    sources_used = {"httpx": False, "playwright": False}
     
     with SessionLocal() as db:
         company = db.query(Company).filter(Company.id == company_id).first()
@@ -115,16 +118,12 @@ def process_company(company_id: int) -> tuple:
         try:
             logger.info(f"Processing {domain}")
 
-            # Reset sub-source tracker before browsing
-            _last_sources_used["httpx"] = False
-            _last_sources_used["playwright"] = False
-
             # Browse homepage (pass db for heartbeat refresh during long fetches)
-            html = browse_homepage(domain, db=db, company_id=company.id)
+            html = browse_homepage(domain, db=db, company_id=company.id, sources=sources_used)
 
             # Record which sources were actually used
             for src in ("httpx", "playwright"):
-                if _last_sources_used[src]:
+                if sources_used[src]:
                     source_stats[src]["total"] = 1
                     source_stats[src]["success"] = 1
 
@@ -328,6 +327,24 @@ def write_metrics(db):
         logger.warning(f"Failed to write metrics: {e}")
 
 
+def report_browsing_progress(companies_total, companies_processed, pages_browsed, failed, status):
+    """Post live browsing progress to the dashboard API."""
+    try:
+        api_base = os.getenv('API_BASE', 'http://localhost:8000/api/v1')
+        _http_client.post(
+            f"{api_base}/dashboard/browsing-progress",
+            json={
+                "companies_total": companies_total,
+                "companies_processed": companies_processed,
+                "pages_browsed": pages_browsed,
+                "failed_companies": failed,
+                "status": status,
+            },
+        )
+    except Exception as e:
+        logger.debug(f"Progress POST failed: {e}")
+
+
 def run_browser():
     """Main watcher loop."""
     logger.info(f"Browsing service started (poll: {POLL_INTERVAL}s, watchdog: {WATCHDOG_MINUTES}min, phase1: {MAX_RETRIES}, phase2: {MAX_RETRIES_PHASE2})")
@@ -350,6 +367,10 @@ def run_browser():
                 logger.info(f"Found {len(company_ids)} companies to browse")
                 aggregated_stats = {"httpx": {"total": 0, "success": 0}, "playwright": {"total": 0, "success": 0}}
                 
+                companies_processed = 0
+                pages_browsed = 0
+                failed_count = 0
+                
                 with ThreadPoolExecutor(max_workers=BROWSING_WORKERS) as executor:
                     futures = {
                         executor.submit(process_company, cid): cid
@@ -359,16 +380,32 @@ def run_browser():
                     for future in as_completed(futures):
                         cid = futures[future]
                         try:
-                            _, c_source_stats = future.result()
+                            result, c_source_stats = future.result()
+                            companies_processed += 1
                             for src_key in aggregated_stats:
                                 aggregated_stats[src_key]["total"] += c_source_stats[src_key]["total"]
                                 aggregated_stats[src_key]["success"] += c_source_stats[src_key]["success"]
+                            if result:
+                                pages_browsed += 1
+                            else:
+                                failed_count += 1
                         except Exception as e:
+                            companies_processed += 1
+                            failed_count += 1
                             logger.error(f"Unhandled error in thread for company {cid}: {e}")
+                        
+                        # Report live progress after each company
+                        report_browsing_progress(
+                            len(companies), companies_processed, pages_browsed, failed_count, "running"
+                        )
+                
+                # Final batch report
+                report_browsing_progress(
+                    len(companies), companies_processed, pages_browsed, failed_count, "idle"
+                )
                 
                 # POST aggregated source stats
                 try:
-                    import httpx
                     api_base = os.getenv('API_BASE', 'http://localhost:8000/api/v1')
                     httpx.post(
                         f"{api_base}/dashboard/source-status",

@@ -28,6 +28,8 @@ from utils.email_utils import is_noise_email, is_placeholder_email, clean_email_
 
 os.makedirs(settings.OUTPUT_DIR, exist_ok=True)
 
+_http_client = httpx.Client(timeout=5.0)
+
 LOG_DIR = os.getenv("LOG_DIR", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logs"))
 os.makedirs(LOG_DIR, exist_ok=True)
 
@@ -233,13 +235,12 @@ async def fetch_page_async(client: httpx.AsyncClient, url: str, headers: dict) -
         return (url, "")
 
 
-_fetch_semaphore = asyncio.Semaphore(20)
-
 
 async def _extract_async(client, urls: List[str], headers: dict) -> List[Tuple[str, str]]:
     """Async helper to fetch multiple pages with concurrency limit."""
+    sem = asyncio.Semaphore(20)
     async def bounded_fetch(url):
-        async with _fetch_semaphore:
+        async with sem:
             return await fetch_page_async(client, url, headers)
     tasks = [bounded_fetch(url) for url in urls]
     results = await asyncio.gather(*tasks)
@@ -283,10 +284,15 @@ def extract_emails_from_pages(domain: str, hosts: List[str]) -> List[str]:
                         f"{scheme}://www.{host}",
                     ])
     
-    try:
-        results = asyncio.run(_extract_async(httpx.AsyncClient(http2=True), urls_to_fetch, headers))
-    except Exception:
-        results = asyncio.run(_extract_async(httpx.AsyncClient(), urls_to_fetch, headers))
+    async def _run_extract(urls, headers):
+        try:
+            async with httpx.AsyncClient(http2=True, timeout=10.0) as client:
+                return await _extract_async(client, urls, headers)
+        except Exception:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                return await _extract_async(client, urls, headers)
+
+    results = asyncio.run(_run_extract(urls_to_fetch, headers))
     
     for url, text in results:
         if text:
@@ -537,10 +543,15 @@ def extract_emails_from_sitemap(domain: str) -> List[str]:
     page_urls = page_urls[:50]
     logger.info(f"Sitemap: {len(page_urls)} pages to scrape for {domain}")
 
-    try:
-        results = asyncio.run(_extract_async(httpx.AsyncClient(http2=True), page_urls, headers))
-    except Exception:
-        results = asyncio.run(_extract_async(httpx.AsyncClient(), page_urls, headers))
+    async def _run_sitemap(urls, headers):
+        try:
+            async with httpx.AsyncClient(http2=True, timeout=10.0) as client:
+                return await _extract_async(client, urls, headers)
+        except Exception:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                return await _extract_async(client, urls, headers)
+
+    results = asyncio.run(_run_sitemap(page_urls, headers))
 
     for url, text in results:
         if not text:
@@ -595,31 +606,34 @@ def process_company(company) -> tuple:
         last_heartbeat_time = time.time()
         failure_reasons = []
         
-        start_time = time.time()
+        total_start = time.time()
         
         logger.info(f"Processing company: {domain}")
         
         # Source 1: theHarvester Docker
         try:
-            if time.time() - start_time > DOMAIN_TIMEOUT:
-                failure_reasons.append("timeout before harvester")
-            else:
-                emails, hosts = run_docker_harvester(domain)
-                source_stats["harvester"]["total"] = len(emails)
-                
-                for email in emails:
-                    all_emails.add(email.lower())
-                
-                if emails:
-                    saved = save_emails_incremental(company.id, emails, 'harvester', domain, db)
-                    saved_count += saved
-                    source_stats["harvester"]["success"] = saved
-                
-                logger.info(f"Source 1 (Harvester): {len(emails)} emails, total: {len(all_emails)}")
-                
-                if time.time() - last_heartbeat_time >= HEARTBEAT_INTERVAL:
-                    update_heartbeat(company, db)
-                    last_heartbeat_time = time.time()
+            source_start = time.time()
+            emails, hosts = run_docker_harvester(domain)
+            elapsed = time.time() - source_start
+            if elapsed > DOMAIN_TIMEOUT:
+                failure_reasons.append(f"harvester exceeded {DOMAIN_TIMEOUT}s ({elapsed:.0f}s)")
+                logger.warning(f"Source 1 (Harvester) for {domain} exceeded {DOMAIN_TIMEOUT}s ({elapsed:.0f}s)")
+            
+            source_stats["harvester"]["total"] = len(emails)
+            
+            for email in emails:
+                all_emails.add(email.lower())
+            
+            if emails:
+                saved = save_emails_incremental(company.id, emails, 'harvester', domain, db)
+                saved_count += saved
+                source_stats["harvester"]["success"] = saved
+            
+            logger.info(f"Source 1 (Harvester): {len(emails)} emails, total: {len(all_emails)}")
+            
+            if time.time() - last_heartbeat_time >= HEARTBEAT_INTERVAL:
+                update_heartbeat(company, db)
+                last_heartbeat_time = time.time()
                     
         except Exception as e:
             logger.warning(f"Source 1 (Harvester) failed for {domain}: {e}")
@@ -627,26 +641,29 @@ def process_company(company) -> tuple:
         
         # Source 2: Google Dorking
         try:
-            if time.time() - start_time > DOMAIN_TIMEOUT:
-                failure_reasons.append("timeout before google dorking")
-            else:
-                emails = extract_emails_from_google_dorking(domain)
-                source_stats["google_dorking"]["total"] = len(emails)
-                
-                new_emails = [e for e in emails if e.lower() not in [e2.lower() for e2 in all_emails]]
-                for email in new_emails:
-                    all_emails.add(email.lower())
-                
-                if new_emails:
-                    saved = save_emails_incremental(company.id, new_emails, 'google_dork', domain, db)
-                    saved_count += saved
-                    source_stats["google_dorking"]["success"] = saved
-                
-                logger.info(f"Source 2 (Google Dorking): {len(new_emails)} new emails, total: {len(all_emails)}")
-                
-                if time.time() - last_heartbeat_time >= HEARTBEAT_INTERVAL:
-                    update_heartbeat(company, db)
-                    last_heartbeat_time = time.time()
+            source_start = time.time()
+            emails = extract_emails_from_google_dorking(domain)
+            elapsed = time.time() - source_start
+            if elapsed > DOMAIN_TIMEOUT:
+                failure_reasons.append(f"google_dork exceeded {DOMAIN_TIMEOUT}s ({elapsed:.0f}s)")
+                logger.warning(f"Source 2 (Google Dorking) for {domain} exceeded {DOMAIN_TIMEOUT}s ({elapsed:.0f}s)")
+            
+            source_stats["google_dorking"]["total"] = len(emails)
+            
+            new_emails = [e for e in emails if e.lower() not in [e2.lower() for e2 in all_emails]]
+            for email in new_emails:
+                all_emails.add(email.lower())
+            
+            if new_emails:
+                saved = save_emails_incremental(company.id, new_emails, 'google_dork', domain, db)
+                saved_count += saved
+                source_stats["google_dorking"]["success"] = saved
+            
+            logger.info(f"Source 2 (Google Dorking): {len(new_emails)} new emails, total: {len(all_emails)}")
+            
+            if time.time() - last_heartbeat_time >= HEARTBEAT_INTERVAL:
+                update_heartbeat(company, db)
+                last_heartbeat_time = time.time()
                     
         except Exception as e:
             logger.warning(f"Source 2 (Google Dorking) failed for {domain}: {e}")
@@ -654,26 +671,29 @@ def process_company(company) -> tuple:
         
         # Source 3: Sitemap crawl
         try:
-            if time.time() - start_time > DOMAIN_TIMEOUT:
-                failure_reasons.append("timeout before sitemap")
-            else:
-                emails = extract_emails_from_sitemap(domain)
-                source_stats["sitemap"]["total"] = len(emails)
-                
-                new_emails = [e for e in emails if e.lower() not in [e2.lower() for e2 in all_emails]]
-                for email in new_emails:
-                    all_emails.add(email.lower())
-                
-                if new_emails:
-                    saved = save_emails_incremental(company.id, new_emails, 'sitemap', domain, db)
-                    saved_count += saved
-                    source_stats["sitemap"]["success"] = saved
-                
-                logger.info(f"Source 3 (Sitemap): {len(new_emails)} new emails, total: {len(all_emails)}")
-                
-                if time.time() - last_heartbeat_time >= HEARTBEAT_INTERVAL:
-                    update_heartbeat(company, db)
-                    last_heartbeat_time = time.time()
+            source_start = time.time()
+            emails = extract_emails_from_sitemap(domain)
+            elapsed = time.time() - source_start
+            if elapsed > DOMAIN_TIMEOUT:
+                failure_reasons.append(f"sitemap exceeded {DOMAIN_TIMEOUT}s ({elapsed:.0f}s)")
+                logger.warning(f"Source 3 (Sitemap) for {domain} exceeded {DOMAIN_TIMEOUT}s ({elapsed:.0f}s)")
+            
+            source_stats["sitemap"]["total"] = len(emails)
+            
+            new_emails = [e for e in emails if e.lower() not in [e2.lower() for e2 in all_emails]]
+            for email in new_emails:
+                all_emails.add(email.lower())
+            
+            if new_emails:
+                saved = save_emails_incremental(company.id, new_emails, 'sitemap', domain, db)
+                saved_count += saved
+                source_stats["sitemap"]["success"] = saved
+            
+            logger.info(f"Source 3 (Sitemap): {len(new_emails)} new emails, total: {len(all_emails)}")
+            
+            if time.time() - last_heartbeat_time >= HEARTBEAT_INTERVAL:
+                update_heartbeat(company, db)
+                last_heartbeat_time = time.time()
                     
         except Exception as e:
             logger.warning(f"Source 3 (Sitemap) failed for {domain}: {e}")
@@ -681,27 +701,30 @@ def process_company(company) -> tuple:
         
         # Source 4: Explicit pages
         try:
-            if time.time() - start_time > DOMAIN_TIMEOUT:
-                failure_reasons.append("timeout before explicit pages")
-            else:
-                page_hosts = [h for h in hosts if h] if hosts else [domain]
-                emails = extract_emails_from_pages(domain, page_hosts)
-                source_stats["explicit_pages"]["total"] = len(emails)
-                
-                new_emails = [e for e in emails if e.lower() not in [e2.lower() for e2 in all_emails]]
-                for email in new_emails:
-                    all_emails.add(email.lower())
-                
-                if new_emails:
-                    saved = save_emails_incremental(company.id, new_emails, 'explicit_pages', domain, db)
-                    saved_count += saved
-                    source_stats["explicit_pages"]["success"] = saved
-                
-                logger.info(f"Source 4 (Explicit pages): {len(new_emails)} new emails, total: {len(all_emails)}")
-                
-                if time.time() - last_heartbeat_time >= HEARTBEAT_INTERVAL:
-                    update_heartbeat(company, db)
-                    last_heartbeat_time = time.time()
+            page_hosts = [h for h in hosts if h] if hosts else [domain]
+            source_start = time.time()
+            emails = extract_emails_from_pages(domain, page_hosts)
+            elapsed = time.time() - source_start
+            if elapsed > DOMAIN_TIMEOUT:
+                failure_reasons.append(f"explicit_pages exceeded {DOMAIN_TIMEOUT}s ({elapsed:.0f}s)")
+                logger.warning(f"Source 4 (Explicit pages) for {domain} exceeded {DOMAIN_TIMEOUT}s ({elapsed:.0f}s)")
+            
+            source_stats["explicit_pages"]["total"] = len(emails)
+            
+            new_emails = [e for e in emails if e.lower() not in [e2.lower() for e2 in all_emails]]
+            for email in new_emails:
+                all_emails.add(email.lower())
+            
+            if new_emails:
+                saved = save_emails_incremental(company.id, new_emails, 'explicit_pages', domain, db)
+                saved_count += saved
+                source_stats["explicit_pages"]["success"] = saved
+            
+            logger.info(f"Source 4 (Explicit pages): {len(new_emails)} new emails, total: {len(all_emails)}")
+            
+            if time.time() - last_heartbeat_time >= HEARTBEAT_INTERVAL:
+                update_heartbeat(company, db)
+                last_heartbeat_time = time.time()
                     
         except Exception as e:
             logger.warning(f"Source 4 (Explicit pages) failed for {domain}: {e}")
@@ -709,31 +732,34 @@ def process_company(company) -> tuple:
         
         # Source 5: Homepage + footer scan
         try:
-            if time.time() - start_time > DOMAIN_TIMEOUT:
-                failure_reasons.append("timeout before homepage")
-            else:
-                emails = extract_emails_from_homepage(domain)
-                source_stats["homepage"]["total"] = len(emails)
-                
-                new_emails = [e for e in emails if e.lower() not in [e2.lower() for e2 in all_emails]]
-                for email in new_emails:
-                    all_emails.add(email.lower())
-                
-                if new_emails:
-                    saved = save_emails_incremental(company.id, new_emails, 'homepage', domain, db)
-                    saved_count += saved
-                    source_stats["homepage"]["success"] = saved
-                
-                logger.info(f"Source 5 (Homepage): {len(new_emails)} new emails, total: {len(all_emails)}")
+            source_start = time.time()
+            emails = extract_emails_from_homepage(domain)
+            elapsed = time.time() - source_start
+            if elapsed > DOMAIN_TIMEOUT:
+                failure_reasons.append(f"homepage exceeded {DOMAIN_TIMEOUT}s ({elapsed:.0f}s)")
+                logger.warning(f"Source 5 (Homepage) for {domain} exceeded {DOMAIN_TIMEOUT}s ({elapsed:.0f}s)")
+            
+            source_stats["homepage"]["total"] = len(emails)
+            
+            new_emails = [e for e in emails if e.lower() not in [e2.lower() for e2 in all_emails]]
+            for email in new_emails:
+                all_emails.add(email.lower())
+            
+            if new_emails:
+                saved = save_emails_incremental(company.id, new_emails, 'homepage', domain, db)
+                saved_count += saved
+                source_stats["homepage"]["success"] = saved
+            
+            logger.info(f"Source 5 (Homepage): {len(new_emails)} new emails, total: {len(all_emails)}")
                 
         except Exception as e:
             logger.warning(f"Source 5 (Homepage) failed for {domain}: {e}")
             failure_reasons.append(f"homepage: {str(e)[:100]}")
         
-        # Check for timeout
-        if time.time() - start_time > DOMAIN_TIMEOUT:
-            logger.warning(f"Domain {domain} exceeded {DOMAIN_TIMEOUT}s timeout")
-            failure_reasons.append(f"timeout after {int(time.time() - start_time)}s")
+        # Log total elapsed time (informational only, each source had its own budget)
+        total_elapsed = time.time() - total_start
+        if total_elapsed > DOMAIN_TIMEOUT:
+            logger.info(f"Domain {domain} total time: {total_elapsed:.0f}s (per-source timeout used)")
         
         # All sources exhausted - mark enriched
         try:
@@ -836,6 +862,24 @@ def write_metrics(db):
         logger.warning(f"Failed to write metrics: {e}")
 
 
+def report_enrichment_progress(companies_total, companies_processed, emails_collected, failed, status):
+    """Post live enrichment progress to the dashboard API."""
+    try:
+        api_base = os.getenv('API_BASE', 'http://localhost:8000/api/v1')
+        _http_client.post(
+            f"{api_base}/dashboard/enrichment-progress",
+            json={
+                "companies_total": companies_total,
+                "companies_processed": companies_processed,
+                "emails_collected": emails_collected,
+                "failed_companies": failed,
+                "status": status,
+            },
+        )
+    except Exception as e:
+        logger.debug(f"Progress POST failed: {e}")
+
+
 def run_enricher():
     """Main watcher loop."""
     logger.info(f"Enricher service started (poll: {POLL_INTERVAL}s, concurrent: {MAX_CONCURRENT}, watchdog: {WATCHDOG_MINUTES}min)")
@@ -878,6 +922,10 @@ def run_enricher():
                     "homepage": {"total": 0, "success": 0},
                 }
                 
+                companies_processed = 0
+                total_emails = 0
+                failed_count = 0
+                
                 with ThreadPoolExecutor(max_workers=MAX_CONCURRENT) as executor:
                     futures = {executor.submit(process_company, company): company for company in companies}
                     
@@ -885,12 +933,29 @@ def run_enricher():
                         company = futures[future]
                         try:
                             result, stats = future.result()
+                            companies_processed += 1
                             for src_key in aggregated_stats:
                                 aggregated_stats[src_key]["total"] += stats[src_key]["total"]
                                 aggregated_stats[src_key]["success"] += stats[src_key]["success"]
+                            batch_emails = sum(stats[k]["success"] for k in stats)
+                            total_emails += batch_emails
+                            if not result:
+                                failed_count += 1
                             logger.info(f"Company {company.domain} processed: {result}")
                         except Exception as e:
+                            companies_processed += 1
+                            failed_count += 1
                             logger.error(f"Error processing {company.domain}: {e}")
+                        
+                        # Report live progress after each company
+                        report_enrichment_progress(
+                            len(companies), companies_processed, total_emails, failed_count, "running"
+                        )
+                
+                # Final batch report
+                report_enrichment_progress(
+                    len(companies), companies_processed, total_emails, failed_count, "idle"
+                )
                 
                 # POST aggregated source stats
                 try:

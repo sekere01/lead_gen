@@ -169,7 +169,7 @@ def discover_commoncrawl(keyword: str, region: str = "", max_results: int = 50,
 
         # Build patterns from keywords
         if keyword_patterns:
-            patterns = [f"*.{tld}/%{kw}%" for kw in keyword_patterns]
+            patterns = [f"*.{tld}/*{kw}*" for kw in keyword_patterns]
         else:
             patterns = [f"*.{tld}/"]
 
@@ -180,7 +180,8 @@ def discover_commoncrawl(keyword: str, region: str = "", max_results: int = 50,
             for attempt in range(retry_count):
                 try:
                     # Extract keyword from pattern for logging
-                    pattern_kw = pattern.split('/%')[-1].rstrip('%') if '%' in pattern else ''
+                    parts = pattern.split('/*')
+                    pattern_kw = parts[-1].rstrip('*') if len(parts) > 1 else ''
 
                     params = {
                         'url': pattern,

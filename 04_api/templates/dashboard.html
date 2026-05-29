@@ -474,6 +474,84 @@
         .vp-breakdown .bar-fill { height: 100%; border-radius: 4px; transition: width 0.4s; }
         .vp-breakdown .bar-count { width: 48px; text-align: right; font-weight: 600; }
 
+        /* === ENRICHMENT PROGRESS WIDGET === */
+        .enrichment-progress { padding: 4px 0; }
+        .enrichment-progress .ep-row { display: flex; justify-content: space-between; font-size: 10px; padding: 3px 0; }
+        .enrichment-progress .ep-label { color: #94a3b8; }
+        .enrichment-progress .ep-value { font-weight: 600; color: #e2e8f0; }
+        .enrichment-progress .ep-value.emails { color: #34d399; }
+        .enrichment-progress .ep-value.failed { color: #f87171; }
+        .enrichment-progress .ep-bar-track { height: 4px; background: #1e293b; border-radius: 2px; margin-top: 6px; overflow: hidden; }
+        .enrichment-progress .ep-bar-fill { height: 100%; border-radius: 2px; transition: width 0.5s ease; }
+        .enrichment-progress .ep-bar-fill.idle { width: 0; background: #64748b; }
+        .enrichment-progress .ep-bar-fill.running { background: linear-gradient(90deg, #10b981, #34d399); }
+        .enrichment-progress .ep-bar-fill.completed { background: linear-gradient(90deg, #6366f1, #818cf8); }
+        .enrichment-progress .ep-status { display: flex; align-items: center; gap: 4px; margin-top: 4px; font-size: 9px; }
+        .enrichment-progress .ep-status-dot { width: 6px; height: 6px; border-radius: 50%; }
+        .enrichment-progress .ep-status-dot.running { background: #10b981; animation: pulse 1s infinite; }
+        .enrichment-progress .ep-status-dot.completed { background: #6366f1; }
+        .enrichment-progress .ep-status-dot.idle { background: #64748b; }
+        .ep-columns { display: flex; gap: 12px; }
+        .ep-left { flex: 0.5; min-width: 0; }
+        .ep-right { flex: 1.5; min-width: 0; border-left: 1px solid #334155; padding-left: 12px; }
+        .ep-breakdown .bar-row { display: flex; align-items: center; gap: 6px; padding: 3px 0; font-size: 10px; }
+        .ep-breakdown .bar-label { width: 90px; text-transform: capitalize; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .ep-breakdown .bar-track { flex: 1; height: 10px; background: var(--bg-tertiary); border-radius: 4px; overflow: hidden; }
+        .ep-breakdown .bar-fill { height: 100%; border-radius: 4px; transition: width 0.4s; }
+        .ep-breakdown .bar-count { width: 48px; text-align: right; font-weight: 600; }
+
+        /* === BROWSING PROGRESS WIDGET === */
+        .browsing-progress { padding: 4px 0; }
+        .browsing-progress .bp-row { display: flex; justify-content: space-between; font-size: 10px; padding: 3px 0; }
+        .browsing-progress .bp-label { color: #94a3b8; }
+        .browsing-progress .bp-value { font-weight: 600; color: #e2e8f0; }
+        .browsing-progress .bp-value.pages { color: #818cf8; }
+        .browsing-progress .bp-value.failed { color: #f87171; }
+        .browsing-progress .bp-bar-track { height: 4px; background: #1e293b; border-radius: 2px; margin-top: 6px; overflow: hidden; }
+        .browsing-progress .bp-bar-fill { height: 100%; border-radius: 2px; transition: width 0.5s ease; }
+        .browsing-progress .bp-bar-fill.idle { width: 0; background: #64748b; }
+        .browsing-progress .bp-bar-fill.running { background: linear-gradient(90deg, #818cf8, #a78bfa); }
+        .browsing-progress .bp-bar-fill.completed { background: linear-gradient(90deg, #6366f1, #818cf8); }
+        .browsing-progress .bp-status { display: flex; align-items: center; gap: 4px; margin-top: 4px; font-size: 9px; }
+        .browsing-progress .bp-status-dot { width: 6px; height: 6px; border-radius: 50%; }
+        .browsing-progress .bp-status-dot.running { background: #818cf8; animation: pulse 1s infinite; }
+        .browsing-progress .bp-status-dot.completed { background: #6366f1; }
+        .browsing-progress .bp-status-dot.idle { background: #64748b; }
+        .bp-columns { display: flex; gap: 12px; }
+        .bp-left { flex: 0.5; min-width: 0; }
+        .bp-right { flex: 1.5; min-width: 0; border-left: 1px solid #334155; padding-left: 12px; }
+        .bp-breakdown .bar-row { display: flex; align-items: center; gap: 6px; padding: 3px 0; font-size: 10px; }
+        .bp-breakdown .bar-label { width: 90px; text-transform: capitalize; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .bp-breakdown .bar-track { flex: 1; height: 10px; background: var(--bg-tertiary); border-radius: 4px; overflow: hidden; }
+        .bp-breakdown .bar-fill { height: 100%; border-radius: 4px; transition: width 0.4s; }
+        .bp-breakdown .bar-count { width: 48px; text-align: right; font-weight: 600; }
+
+        /* === DISCOVERY PROGRESS WIDGET === */
+        .discovery-progress { padding: 4px 0; }
+        .discovery-progress .dp-row { display: flex; justify-content: space-between; font-size: 10px; padding: 3px 0; }
+        .discovery-progress .dp-label { color: #94a3b8; }
+        .discovery-progress .dp-value { font-weight: 600; color: #e2e8f0; }
+        .discovery-progress .dp-value.found { color: #60a5fa; }
+        .discovery-progress .dp-value.failed { color: #f87171; }
+        .discovery-progress .dp-bar-track { height: 4px; background: #1e293b; border-radius: 2px; margin-top: 6px; overflow: hidden; }
+        .discovery-progress .dp-bar-fill { height: 100%; border-radius: 2px; transition: width 0.5s ease; }
+        .discovery-progress .dp-bar-fill.idle { width: 0; background: #64748b; }
+        .discovery-progress .dp-bar-fill.running { background: linear-gradient(90deg, #3b82f6, #60a5fa); }
+        .discovery-progress .dp-bar-fill.completed { background: linear-gradient(90deg, #2563eb, #3b82f6); }
+        .discovery-progress .dp-status { display: flex; align-items: center; gap: 4px; margin-top: 4px; font-size: 9px; }
+        .discovery-progress .dp-status-dot { width: 6px; height: 6px; border-radius: 50%; }
+        .discovery-progress .dp-status-dot.running { background: #3b82f6; animation: pulse 1s infinite; }
+        .discovery-progress .dp-status-dot.completed { background: #2563eb; }
+        .discovery-progress .dp-status-dot.idle { background: #64748b; }
+        .dp-columns { display: flex; gap: 12px; }
+        .dp-left { flex: 0.5; min-width: 0; }
+        .dp-right { flex: 1.5; min-width: 0; border-left: 1px solid #334155; padding-left: 12px; }
+        .dp-breakdown .bar-row { display: flex; align-items: center; gap: 6px; padding: 3px 0; font-size: 10px; }
+        .dp-breakdown .bar-label { width: 90px; text-transform: capitalize; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .dp-breakdown .bar-track { flex: 1; height: 10px; background: var(--bg-tertiary); border-radius: 4px; overflow: hidden; }
+        .dp-breakdown .bar-fill { height: 100%; border-radius: 4px; transition: width 0.4s; }
+        .dp-breakdown .bar-count { width: 48px; text-align: right; font-weight: 600; }
+
         .source-row { display: flex; align-items: center; gap: 6px; padding: 3px 0; font-size: 10px; }
         .source-label { color: #94a3b8; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .source-count { color: #e2e8f0; font-weight: 600; min-width: 28px; text-align: right; }
@@ -530,13 +608,6 @@
                 <div class="value failed" id="failed-jobs">-</div>
             </div>
 </div>
-        
-        <div class="summary-grid" id="summary-panel" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px;display:none;">
-            <div class="stat-card">
-                <h3>Companies by Status</h3>
-                <div id="companies-by-status" style="margin-top:8px;font-size:13px;"></div>
-            </div>
-        </div>
         
         <div class="pipeline-container" id="pipeline">
             <div style="display: grid; grid-template-columns: 50px auto 1fr; grid-template-areas: 'control gap nodes'; align-items: center;">
@@ -1019,6 +1090,15 @@ function initWebSocket() {
                 if (message.data.pipeline) {
                     renderPipelineMap(message.data.pipeline);
                     detectBottlenecks(message.data.pipeline);
+                    if (message.data.pipeline.enrichment) {
+                        renderEnrichmentBreakdown(message.data.pipeline.enrichment.sources);
+                    }
+                    if (message.data.pipeline.browsing) {
+                        renderBrowsingBreakdown(message.data.pipeline.browsing.sources);
+                    }
+                    if (message.data.pipeline.discovery) {
+                        renderDiscoveryBreakdown(message.data.pipeline.discovery.sources);
+                    }
                 }
                 if (message.data.db_status) {
                     updateDbStatus(message.data.db_status);
@@ -1032,6 +1112,12 @@ function initWebSocket() {
                 // Server responded to our ping
             } else if (message.type === "verification_progress") {
                 updateVerifierProgress(message.data);
+            } else if (message.type === "enrichment_progress") {
+                updateEnrichmentProgress(message.data);
+            } else if (message.type === "browsing_progress") {
+                updateBrowsingProgress(message.data);
+            } else if (message.type === "discovery_progress") {
+                updateDiscoveryProgress(message.data);
             }
         } catch (e) {
             console.error("WebSocket message error:", e);
@@ -1428,13 +1514,21 @@ function animateCounter(element, target, duration = 1000) {
             animateCounter(document.getElementById('failed-jobs'), data.metrics.failed_jobs);
             renderPipelineMap(data.pipeline);
 
-            // Render status breakdown
-            const summaryEl = document.getElementById('summary-panel');
-            if (data.metrics.companies_by_status && data.metrics.companies_by_status.length > 0) {
-                summaryEl.style.display = 'grid';
-                renderStatusBreakdown('companies-by-status', data.metrics.companies_by_status);
-                renderVpBreakdown(data.metrics.contacts_by_verification);
+            // Render enrichment breakdown from pipeline sources
+            if (data.pipeline && data.pipeline.enrichment) {
+                renderEnrichmentBreakdown(data.pipeline.enrichment.sources);
             }
+            // Render browsing breakdown from pipeline sources
+            if (data.pipeline && data.pipeline.browsing) {
+                renderBrowsingBreakdown(data.pipeline.browsing.sources);
+            }
+            // Render discovery breakdown from pipeline sources
+            if (data.pipeline && data.pipeline.discovery) {
+                renderDiscoveryBreakdown(data.pipeline.discovery.sources);
+            }
+
+            // Render verification breakdown
+            renderVpBreakdown(data.metrics.contacts_by_verification);
         }
         
         let metricsChart = null;
@@ -1755,7 +1849,7 @@ function animateCounter(element, target, duration = 1000) {
                     
                     // Update source statuses inside sub-nodes
                     const subEl = child.querySelector('.sub-nodes');
-                    if (subEl && node.key !== 'verification') {
+                    if (subEl && node.key !== 'verification' && node.key !== 'enrichment' && node.key !== 'browsing' && node.key !== 'discovery') {
                         subEl.innerHTML = renderNodeSources(node.key, (data && data.sources) || {});
                     }
                     
@@ -1806,7 +1900,7 @@ function animateCounter(element, target, duration = 1000) {
                         <div class="pipeline-node-queue ${queueLevel}">
                             ${data.queue} waiting
                         </div>
-                        <div class="node-toggle" onclick="event.stopPropagation(); toggleSubNodes('${node.key}')">${node.key === 'verification' ? '▼ Imported Contacts' : '▼ Sources'}</div>
+                        <div class="node-toggle" onclick="event.stopPropagation(); toggleSubNodes('${node.key}')">${node.key === 'verification' ? '▼ Imported Contacts' : node.key === 'enrichment' || node.key === 'browsing' || node.key === 'discovery' ? '▼ Progress' : '▼ Sources'}</div>
                         <div class="sub-nodes" id="sub-${node.key}">
                             ${node.key === 'verification'
                                 ? `<div class="vp-columns"><div class="vp-left">
@@ -1824,6 +1918,43 @@ function animateCounter(element, target, duration = 1000) {
                                 </div>
                                 </div><div class="vp-right">
                                 <div class="vp-breakdown" id="vp-breakdown"></div>
+                                </div></div>`
+                                : node.key === 'enrichment'
+                                ? `<div class="ep-columns"><div class="ep-left">
+                                <div class="enrichment-progress">
+                                    <div class="ep-row"><span class="ep-label">Companies</span><span class="ep-value" id="ep-companies">0 / 0</span></div>
+                                    <div class="ep-row"><span class="ep-label">Emails</span><span class="ep-value emails" id="ep-emails">0</span></div>
+                                    <div class="ep-row"><span class="ep-label">Failed</span><span class="ep-value failed" id="ep-failed">0</span></div>
+                                    <div class="ep-bar-track"><div class="ep-bar-fill idle" id="ep-bar"></div></div>
+                                    <div class="ep-status"><span class="ep-status-dot idle" id="ep-dot"></span><span id="ep-status-text">Idle</span></div>
+                                </div>
+                                </div><div class="ep-right">
+                                <div class="ep-breakdown" id="ep-breakdown"></div>
+                                </div></div>`
+                                 : node.key === 'browsing'
+                                ? `<div class="bp-columns"><div class="bp-left">
+                                <div class="browsing-progress">
+                                    <div class="bp-row"><span class="bp-label">Companies</span><span class="bp-value" id="bp-companies">0 / 0</span></div>
+                                    <div class="bp-row"><span class="bp-label">Pages</span><span class="bp-value pages" id="bp-pages">0</span></div>
+                                    <div class="bp-row"><span class="bp-label">Failed</span><span class="bp-value failed" id="bp-failed">0</span></div>
+                                    <div class="bp-bar-track"><div class="bp-bar-fill idle" id="bp-bar"></div></div>
+                                    <div class="bp-status"><span class="bp-status-dot idle" id="bp-dot"></span><span id="bp-status-text">Idle</span></div>
+                                </div>
+                                </div><div class="bp-right">
+                                <div class="bp-breakdown" id="bp-breakdown"></div>
+                                </div></div>`
+                                : node.key === 'discovery'
+                                ? `<div class="dp-columns"><div class="dp-left">
+                                <div class="discovery-progress">
+                                    <div class="dp-row"><span class="dp-label">Found</span><span class="dp-value found" id="dp-found">0</span></div>
+                                    <div class="dp-row"><span class="dp-label">Saved</span><span class="dp-value" id="dp-saved">0</span></div>
+                                    <div class="dp-row"><span class="dp-label">Imported</span><span class="dp-value" id="dp-imported">0</span></div>
+                                    <div class="dp-row"><span class="dp-label">Sources</span><span class="dp-value" id="dp-sources">0 ok / 0 fail</span></div>
+                                    <div class="dp-bar-track"><div class="dp-bar-fill idle" id="dp-bar"></div></div>
+                                    <div class="dp-status"><span class="dp-status-dot idle" id="dp-dot"></span><span id="dp-status-text">Idle</span></div>
+                                </div>
+                                </div><div class="dp-right">
+                                <div class="dp-breakdown" id="dp-breakdown"></div>
                                 </div></div>`
                                 : renderNodeSources(node.key, data.sources || {})
                             }
@@ -1858,7 +1989,8 @@ function animateCounter(element, target, duration = 1000) {
                         sub.classList.add('expanded');
                         sub.closest('.pipeline-node').classList.add('expanded');
                         const toggle = sub.previousElementSibling;
-                        toggle.textContent = `▲ ${expandedKey === 'verification' ? 'Imported Contacts' : 'Sources'}`;
+                        const toggleLabels = { verification: 'Imported Contacts', enrichment: 'Progress', browsing: 'Progress', discovery: 'Progress' };
+                        toggle.textContent = `▲ ${toggleLabels[expandedKey] || 'Sources'}`;
                         const sc = document.getElementById(`sc-${expandedKey}`);
                         if (sc) sc.style.display = 'block';
                         fetch(`${API}/services/status`).then(r => r.json()).then(services => {
@@ -1903,7 +2035,7 @@ function animateCounter(element, target, duration = 1000) {
                     queueEl.textContent = data.queue + ' waiting';
                 }
                 const subEl = child.querySelector('.sub-nodes');
-                if (subEl && key !== 'verification') {
+                if (subEl && key !== 'verification' && key !== 'enrichment' && key !== 'browsing' && key !== 'discovery') {
                     subEl.innerHTML = renderNodeSources(key, (data && data.sources) || {});
                 }
                 if (i < nodes.length - 1) {
@@ -1933,7 +2065,8 @@ function animateCounter(element, target, duration = 1000) {
                         other.classList.remove('expanded');
                         const otherToggle = other.previousElementSibling;
                         const otherKey = other.id.replace('sub-', '');
-                        const otherPrefix = otherKey === 'verification' ? 'Imported Contacts' : 'Sources';
+                        const otherLabels = { verification: 'Imported Contacts', enrichment: 'Progress', browsing: 'Progress', discovery: 'Progress' };
+                        const otherPrefix = otherLabels[otherKey] || 'Sources';
                         otherToggle.textContent = `▼ ${otherPrefix}`;
                         other.closest('.pipeline-node').classList.remove('expanded');
                         const otherSc = document.getElementById(`sc-${otherKey}`);
@@ -1943,7 +2076,8 @@ function animateCounter(element, target, duration = 1000) {
             }
             const isExpanded = el.classList.toggle('expanded');
             const toggle = el.previousElementSibling;
-            const prefix = nodeKey === 'verification' ? 'Imported Contacts' : 'Sources';
+            const toggleLabels = { verification: 'Imported Contacts', enrichment: 'Progress', browsing: 'Progress', discovery: 'Progress' };
+            const prefix = toggleLabels[nodeKey] || 'Sources';
             toggle.textContent = isExpanded ? `▲ ${prefix}` : `▼ ${prefix}`;
             const node = el.closest('.pipeline-node');
             node.classList.toggle('expanded', isExpanded);
@@ -1992,6 +2126,160 @@ function animateCounter(element, target, duration = 1000) {
             statusEl.textContent = labels[status] || status;
         }
         
+        function updateEnrichmentProgress(data) {
+            const companiesEl = document.getElementById('ep-companies');
+            const emailsEl = document.getElementById('ep-emails');
+            const failedEl = document.getElementById('ep-failed');
+            const barEl = document.getElementById('ep-bar');
+            const dotEl = document.getElementById('ep-dot');
+            const statusEl = document.getElementById('ep-status-text');
+            if (!companiesEl) return;
+            const total = data.companies_total || 1;
+            const processed = data.companies_processed || 0;
+            const emails = data.emails_collected || 0;
+            const failed = data.failed_companies || 0;
+            const status = data.status || 'idle';
+            const pct = Math.min(100, Math.round((processed / total) * 100));
+            companiesEl.textContent = `${processed} / ${total}`;
+            emailsEl.textContent = emails;
+            failedEl.textContent = failed;
+            barEl.className = 'ep-bar-fill ' + status;
+            barEl.style.width = pct + '%';
+            dotEl.className = 'ep-status-dot ' + status;
+            const labels = { idle: 'Idle', running: 'Processing...', completed: 'Done' };
+            statusEl.textContent = labels[status] || status;
+        }
+
+        function renderEnrichmentBreakdown(sources) {
+            const el = document.getElementById('ep-breakdown');
+            if (!el) return;
+            if (!sources || Object.keys(sources).length === 0) {
+                el.innerHTML = '<div style="font-size:9px;color:var(--text-secondary);">No source data</div>';
+                return;
+            }
+            const labelMap = SOURCE_LABELS;
+            const items = Object.entries(sources);
+            const maxTotal = Math.max(...items.map(([, s]) => s.total || 0), 1);
+            el.innerHTML = '<div style="font-size:9px;color:var(--text-secondary);margin-bottom:4px;">Emails by Source</div>' +
+            items.map(([key, s]) => {
+                const total = s.total || 0;
+                const success = s.success || 0;
+                const pct = maxTotal > 0 ? (total / maxTotal * 100) : 0;
+                const color = total > 0 && success === total ? '#10b981'
+                    : total > 0 && success > 0 ? '#f59e0b'
+                    : total > 0 ? '#ef4444' : '#475569';
+                return `<div class="bar-row">
+                    <span class="bar-label">${labelMap[key] || key}</span>
+                    <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${color};"></div></div>
+                    <span class="bar-count">${total.toLocaleString()}</span>
+                </div>`;
+            }).join('');
+        }
+
+        function updateBrowsingProgress(data) {
+            const companiesEl = document.getElementById('bp-companies');
+            const pagesEl = document.getElementById('bp-pages');
+            const failedEl = document.getElementById('bp-failed');
+            const barEl = document.getElementById('bp-bar');
+            const dotEl = document.getElementById('bp-dot');
+            const statusEl = document.getElementById('bp-status-text');
+            if (!companiesEl) return;
+            const total = data.companies_total || 1;
+            const processed = data.companies_processed || 0;
+            const pages = data.pages_browsed || 0;
+            const failed = data.failed_companies || 0;
+            const status = data.status || 'idle';
+            const pct = Math.min(100, Math.round((processed / total) * 100));
+            companiesEl.textContent = `${processed} / ${total}`;
+            pagesEl.textContent = pages;
+            failedEl.textContent = failed;
+            barEl.className = 'bp-bar-fill ' + status;
+            barEl.style.width = pct + '%';
+            dotEl.className = 'bp-status-dot ' + status;
+            const labels = { idle: 'Idle', running: 'Browsing...', completed: 'Done' };
+            statusEl.textContent = labels[status] || status;
+        }
+
+        function renderBrowsingBreakdown(sources) {
+            const el = document.getElementById('bp-breakdown');
+            if (!el) return;
+            if (!sources || Object.keys(sources).length === 0) {
+                el.innerHTML = '<div style="font-size:9px;color:var(--text-secondary);">No source data</div>';
+                return;
+            }
+            const labelMap = SOURCE_LABELS;
+            const items = Object.entries(sources);
+            const maxTotal = Math.max(...items.map(([, s]) => s.total || 0), 1);
+            el.innerHTML = '<div style="font-size:9px;color:var(--text-secondary);margin-bottom:4px;">Pages by Source</div>' +
+            items.map(([key, s]) => {
+                const total = s.total || 0;
+                const success = s.success || 0;
+                const pct = maxTotal > 0 ? (total / maxTotal * 100) : 0;
+                const color = total > 0 && success === total ? '#818cf8'
+                    : total > 0 && success > 0 ? '#f59e0b'
+                    : total > 0 ? '#ef4444' : '#475569';
+                return `<div class="bar-row">
+                    <span class="bar-label">${labelMap[key] || key}</span>
+                    <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${color};"></div></div>
+                    <span class="bar-count">${total.toLocaleString()}</span>
+                </div>`;
+            }).join('');
+        }
+
+        function updateDiscoveryProgress(data) {
+            const foundEl = document.getElementById('dp-found');
+            const savedEl = document.getElementById('dp-saved');
+            const importedEl = document.getElementById('dp-imported');
+            const sourcesEl = document.getElementById('dp-sources');
+            const barEl = document.getElementById('dp-bar');
+            const dotEl = document.getElementById('dp-dot');
+            const statusEl = document.getElementById('dp-status-text');
+            if (!foundEl) return;
+            const found = data.domains_found || 0;
+            const saved = data.domains_saved || 0;
+            const imported = data.domains_imported || 0;
+            const srcOk = data.sources_succeeded || 0;
+            const srcFail = data.sources_failed || 0;
+            const status = data.status || 'idle';
+            const total = Math.max(found, saved, 1);
+            const pct = Math.min(100, Math.round((saved / total) * 100));
+            foundEl.textContent = found;
+            savedEl.textContent = saved;
+            importedEl.textContent = imported;
+            sourcesEl.textContent = `${srcOk} ok / ${srcFail} fail`;
+            barEl.className = 'dp-bar-fill ' + status;
+            barEl.style.width = pct + '%';
+            dotEl.className = 'dp-status-dot ' + status;
+            const labels = { idle: 'Idle', discovering: 'Discovering...', completed: 'Completed' };
+            statusEl.textContent = labels[status] || status;
+        }
+
+        function renderDiscoveryBreakdown(sources) {
+            const el = document.getElementById('dp-breakdown');
+            if (!el) return;
+            if (!sources || Object.keys(sources).length === 0) {
+                el.innerHTML = '<div style="font-size:9px;color:var(--text-secondary);">No source data</div>';
+                return;
+            }
+            const labelMap = SOURCE_LABELS;
+            const items = Object.entries(sources);
+            const maxTotal = Math.max(...items.map(([, s]) => s.total || 0), 1);
+            el.innerHTML = '<div style="font-size:9px;color:var(--text-secondary);margin-bottom:4px;">Domains by Source</div>' +
+            items.map(([key, s]) => {
+                const total = s.total || 0;
+                const success = s.success || 0;
+                const pct = maxTotal > 0 ? (total / maxTotal * 100) : 0;
+                const color = total > 0 && success === total ? '#3b82f6'
+                    : total > 0 && success > 0 ? '#f59e0b'
+                    : total > 0 ? '#ef4444' : '#475569';
+                return `<div class="bar-row">
+                    <span class="bar-label">${labelMap[key] || key}</span>
+                    <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${color};"></div></div>
+                    <span class="bar-count">${total.toLocaleString()}</span>
+                </div>`;
+            }).join('');
+        }
+
         async function serviceAction(action, btn) {
             const node = btn.closest('.pipeline-node');
             const service = btn.dataset.service;

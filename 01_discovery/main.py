@@ -11,6 +11,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any
 
+import httpx
 from database import SessionLocal, init_db, DiscoveryJob, Company
 from shared_models import update_job_stats
 from sqlalchemy.dialects.postgresql import insert
@@ -52,6 +53,27 @@ HEARTBEAT_INTERVAL = 10
 BATCH_SIZE = 25
 WATCHDOG_TIMEOUT_MINUTES = 30
 
+_http_client = httpx.Client(timeout=5.0)
+
+
+def report_discovery_progress(domains_found, domains_saved, domains_imported, sources_ok, sources_fail, status):
+    """Post live discovery progress to the dashboard API."""
+    try:
+        api_base = os.getenv('API_BASE', 'http://localhost:8000/api/v1')
+        _http_client.post(
+            f"{api_base}/dashboard/discovery-progress",
+            json={
+                "domains_found": domains_found,
+                "domains_saved": domains_saved,
+                "domains_imported": domains_imported,
+                "sources_succeeded": sources_ok,
+                "sources_failed": sources_fail,
+                "status": status,
+            },
+        )
+    except Exception as e:
+        logger.debug(f"Progress POST failed: {e}")
+
 
 def update_heartbeat(job, db) -> None:
     """Update job heartbeat timestamp."""
@@ -91,25 +113,6 @@ def discover_domains_isolated(keyword: str, region: str = "") -> Dict[str, Any]:
     except Exception as e:
         logger.warning(f"Search failed for '{keyword}': {e}")
         result['sources_failed'].append('search')
-
-    # Source 2: CommonCrawl (independent try/except) — only if not already covered by search_orchestration
-    try:
-        cc_results = discover_commoncrawl(keyword, region=region, max_results=500)
-        logger.info(f"CommonCrawl found {len(cc_results)} domains")
-        cc_count_before = len(result['domains'])
-        for cc in cc_results:
-            cc_domain = cc.get('domain', '')
-            if cc_domain and cc_domain not in result['domains']:
-                result['domains'].append(cc_domain)
-        if cc_results:
-            result['sources_succeeded'].append('commoncrawl')
-        # Update commoncrawl count with any new domains found
-        new_cc = len(result['domains']) - cc_count_before
-        result['source_stats']["commoncrawl"]["total"] += new_cc
-        result['source_stats']["commoncrawl"]["success"] += new_cc
-    except Exception as e:
-        logger.warning(f"CommonCrawl failed for '{keyword}': {e}")
-        result['sources_failed'].append('commoncrawl')
 
     result['domains'] = list(set(result['domains']))
     logger.info(f"Total unique domains: {len(result['domains'])}")
@@ -176,10 +179,13 @@ def process_job(job, db) -> tuple:
         discovery_result = discover_domains_isolated(job.keyword, job.region)
         domains = discovery_result['domains']
         sources_succeeded = discovery_result['sources_succeeded']
+        sources_failed = discovery_result['sources_failed']
         source_stats = discovery_result['source_stats']
 
         # Check graceful degradation: all sources failed
         if not sources_succeeded and not domains:
+            imported_count = db.query(Company).filter(Company.lead_source == 'manual').count()
+            report_discovery_progress(0, 0, imported_count, len(sources_succeeded), len(sources_failed), "idle")
             job.status = 'completed'
             job.results_count = 0
             job.error_message = 'All sources failed - no domains found'
@@ -190,6 +196,8 @@ def process_job(job, db) -> tuple:
             return True, source_stats
 
         if not domains:
+            imported_count = db.query(Company).filter(Company.lead_source == 'manual').count()
+            report_discovery_progress(0, 0, imported_count, len(sources_succeeded), len(sources_failed), "idle")
             job.status = 'completed'
             job.results_count = 0
             job.error_message = 'No domains found'
@@ -216,6 +224,13 @@ def process_job(job, db) -> tuple:
                 if len(current_batch) >= BATCH_SIZE:
                     saved_count += save_batch_incremental(job.id, current_batch, db)
                     current_batch = []
+                    # Report live progress after each batch saved
+                    imported_count = db.query(Company).filter(Company.lead_source == 'manual').count()
+                    report_discovery_progress(
+                        len(domains), saved_count, imported_count,
+                        len(sources_succeeded), len(sources_failed),
+                        "discovering"
+                    )
 
                 # Update heartbeat every HEARTBEAT_INTERVAL seconds
                 if time.time() - last_heartbeat_time >= HEARTBEAT_INTERVAL:
@@ -232,6 +247,14 @@ def process_job(job, db) -> tuple:
 
         # Final heartbeat update
         update_heartbeat(job, db)
+
+        # Report final progress
+        imported_count = db.query(Company).filter(Company.lead_source == 'manual').count()
+        report_discovery_progress(
+            len(domains), saved_count, imported_count,
+            len(sources_succeeded), len(sources_failed),
+            "completed"
+        )
 
         job.status = 'completed'
         job.results_count = saved_count

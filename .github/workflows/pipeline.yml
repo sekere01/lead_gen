@@ -94,9 +94,9 @@ jobs:
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: 'fs'
-          scan-ref: '.'
+          scan-ref: '${{ github.workspace }}'
           format: 'table'
-          scanners: 'vuln,secret'
+          scanners: 'vuln,secret,misconfig'
           severity: 'HIGH,CRITICAL'
           list-all-pkgs: 'false'
           exit-code: ${{ github.ref_name == 'main' && '1' || '0' }}

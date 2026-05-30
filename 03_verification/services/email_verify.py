@@ -87,6 +87,7 @@ def verify_email_fast(email: str) -> Dict[str, Any]:
         "has_mx_records": False,
         "is_verified": False,
         "verification_status": "invalid",
+        "mx_domain": None,
         "details": {}
     }
 
@@ -117,6 +118,8 @@ def verify_email_fast(email: str) -> Dict[str, Any]:
     has_mx, mx_records = has_mx_record(email)
     result["has_mx_records"] = has_mx
     result["details"]["mx_records"] = mx_records
+    if mx_records:
+        result["mx_domain"] = mx_records[0].get('exchange', '')
     
     if not has_mx:
         result["verification_status"] = "no_mx_records"

@@ -224,3 +224,32 @@ def validate_email_format(email: str) -> bool:
     if not email or '@' not in email:
         return False
     return bool(EMAIL_REGEX.match(email.strip()))
+
+
+PROVIDER_MAP = [
+    (['google.com', 'googlemail.com'], 'Gmail'),
+    (['outlook.com', 'hotmail.com'], 'Outlook'),
+    (['yahoo.com', 'yahoomail.com'], 'Yahoo'),
+    (['protonmail', 'proton.me', 'protonmail.ch'], 'ProtonMail'),
+    (['icloud.com', 'me.com'], 'iCloud'),
+    (['zoho', 'zohomail'], 'Zoho'),
+    (['mail.com'], 'Mail.com'),
+    (['aol.com', 'aim.com'], 'AOL'),
+    (['gmx'], 'GMX'),
+    (['yandex'], 'Yandex'),
+    (['fastmail', 'messagingengine.com'], 'Fastmail'),
+    (['exchange', 'microsoft'], 'Exchange'),
+    (['rackspace'], 'Rackspace'),
+]
+
+
+def classify_provider(mx_exchange: str) -> str:
+    """Classify email provider from MX exchange hostname."""
+    if not mx_exchange:
+        return 'Unknown'
+    mx_lower = mx_exchange.lower()
+    for domains, provider in PROVIDER_MAP:
+        for d in domains:
+            if d in mx_lower:
+                return provider
+    return 'Other'

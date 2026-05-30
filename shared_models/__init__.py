@@ -9,6 +9,7 @@ from shared_models.job_stats import JobStats, update_job_stats
 from shared_models.discovery_job import DiscoveryJob
 from shared_models.job_template import JobTemplate
 from shared_models.service_metrics import ServiceMetrics
+from shared_models.email_list import EmailList
 
 __all__ = [
     'Base',
@@ -20,4 +21,5 @@ __all__ = [
     'DiscoveryJob',
     'JobTemplate',
     'ServiceMetrics',
+    'EmailList',
 ]

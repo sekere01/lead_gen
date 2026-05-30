@@ -33,6 +33,9 @@ class ContactResponse(BaseModel):
     is_verified: bool
     verification_status: Optional[str]
     source: Optional[str]
+    provider: Optional[str]
+    mx_domain: Optional[str]
+    tags: Optional[str]
     company_id: int
     company_domain: Optional[str] = None
     created_at: Optional[datetime]
@@ -54,6 +57,7 @@ def list_contacts(
     status: Optional[str] = Query(None, alias="verification_status"),
     is_verified: Optional[bool] = Query(None),
     source: Optional[str] = Query(None),
+    provider: Optional[str] = Query(None),
     company_id: Optional[int] = Query(None),
     search: Optional[str] = Query(None),
     sort_by: Optional[str] = Query(None),
@@ -72,6 +76,8 @@ def list_contacts(
             query = query.filter(Contact.is_verified == is_verified)
         if source:
             query = query.filter(Contact.source == source)
+        if provider:
+            query = query.filter(Contact.provider == provider)
         if company_id:
             query = query.filter(Contact.company_id == company_id)
         if search:

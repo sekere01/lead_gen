@@ -114,6 +114,15 @@
         .badge.invalid_syntax { background: #fee2e2; color: #991b1b; }
         .badge.source-imported { background: #dbeafe; color: #1e40af; }
         .badge.source-enriched { background: #ede9fe; color: #5b21b6; }
+        .badge.provider-Gmail { background: #ea4335; color: #fff; }
+        .badge.provider-Outlook { background: #0078d4; color: #fff; }
+        .badge.provider-Yahoo { background: #6001d2; color: #fff; }
+        .badge.provider-ProtonMail { background: #6d4aff; color: #fff; }
+        .badge.provider-iCloud { background: #555555; color: #fff; }
+        .badge.provider-Zoho { background: #e42527; color: #fff; }
+        .badge.provider-Other { background: #64748b; color: #fff; }
+        .badge.provider-Unknown { background: #334155; color: #94a3b8; }
+        .badge.tag { background: #1e293b; color: #94a3b8; border: 1px solid #334155; }
         
         .queue-list { max-height: 300px; overflow-y: auto; }
         .queue-list::-webkit-scrollbar { width: 5px; }
@@ -578,6 +587,7 @@
             <button class="btn btn-secondary" onclick="viewLogs()" aria-label="View pipeline logs">Logs</button>
             <button class="btn btn-secondary" onclick="openExportModal()" aria-label="Export emails">Export</button>
             <button class="btn btn-secondary" onclick="openImportModal()" aria-label="Import emails">Import</button>
+            <button class="btn btn-secondary" onclick="toggleSorterPanel()" aria-label="Email sorter">Sorter</button>
         </div>
     </div>
     
@@ -603,9 +613,9 @@
                 <h3>Completed</h3>
                 <div class="value completed" id="completed-jobs">-</div>
             </div>
-            <div class="stat-card" style="cursor: pointer;" onclick="showJobsModal('failed')">
+            <div class="stat-card" style="cursor: pointer;" onclick="showFailedBreakdown()">
                 <h3>Failed</h3>
-                <div class="value failed" id="failed-jobs">-</div>
+                <div class="value failed" id="failed-total">-</div>
             </div>
 </div>
         
@@ -621,6 +631,75 @@
                 </div>
                 <div style="grid-area: gap;"></div>
                 <div class="pipeline-map" id="pipeline-map" style="grid-area: nodes; justify-content: center;"></div>
+            </div>
+        </div>
+
+        <!-- SORTER PANEL (hidden by default) -->
+        <div class="sorter-panel" id="sorter-panel" style="display:none;margin-bottom:24px;">
+            <div class="panel">
+                <div class="panel-header">
+                    <h2>Email Sorter</h2>
+                    <div style="display:flex;gap:8px;align-items:center;">
+                        <span id="sorter-total" style="font-size:13px;color:var(--text-secondary);"></span>
+                        <button class="btn btn-sm btn-secondary" onclick="loadSorterData()">Refresh</button>
+                        <button class="btn btn-sm btn-secondary" onclick="exportSorter()">Export</button>
+                        <button class="btn btn-sm btn-secondary" onclick="toggleSorterPanel()">Close</button>
+                    </div>
+                </div>
+                <div class="panel-body">
+                    <div class="sorter-stats" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;">
+                        <div class="stat-card" style="padding:12px;">
+                            <div style="font-size:11px;color:var(--text-secondary);">Total Contacts</div>
+                            <div style="font-size:24px;font-weight:700;" id="sst-total">-</div>
+                        </div>
+                        <div class="stat-card" style="padding:12px;border-left:3px solid #f59e0b;">
+                            <div style="font-size:11px;color:var(--text-secondary);display:flex;justify-content:space-between;align-items:center;">
+                                <span>Need MX Resolve</span>
+                                <span style="display:flex;align-items:center;gap:4px;font-size:10px;">
+                                    <span class="connection-dot disconnected" id="sst-verifier-dot"></span>
+                                    <span id="sst-verifier-text">checking...</span>
+                                </span>
+                            </div>
+                            <div style="font-size:24px;font-weight:700;color:#f59e0b;" id="sst-unresolved">-</div>
+                        </div>
+                        <div class="stat-card" style="padding:12px;border-left:3px solid #dc2626;">
+                            <div style="font-size:11px;color:var(--text-secondary);">Failed</div>
+                            <div style="font-size:24px;font-weight:700;color:#dc2626;" id="sst-failed">-</div>
+                        </div>
+                        <div class="stat-card" style="padding:12px;border-left:3px solid #ef4444;">
+                            <div style="font-size:11px;color:var(--text-secondary);">Duplicates</div>
+                            <div style="font-size:24px;font-weight:700;color:#ef4444;" id="sst-duplicates">-</div>
+                        </div>
+                    </div>
+                    <div class="sorter-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                        <div>
+                            <h3 style="font-size:13px;font-weight:600;margin-bottom:8px;">Provider Breakdown</h3>
+                            <div id="sorter-breakdown" style="font-size:13px;min-height:100px;"></div>
+                        </div>
+                        <div>
+                            <h3 style="font-size:13px;font-weight:600;margin-bottom:8px;">Provider Chart</h3>
+                            <div style="height:200px;position:relative;">
+                                <canvas id="sorterChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="margin-top:16px;">
+                        <h3 style="font-size:13px;font-weight:600;margin-bottom:8px;">MX Domains</h3>
+                        <div id="sorter-domains" style="font-size:12px;max-height:200px;overflow-y:auto;"></div>
+                    </div>
+                    <div style="margin-top:16px;">
+                        <h3 style="font-size:13px;font-weight:600;margin-bottom:8px;">Saved Lists</h3>
+                        <div id="sorter-lists" style="font-size:12px;max-height:200px;overflow-y:auto;"></div>
+                        <div style="margin-top:8px;display:flex;gap:8px;">
+                            <input type="text" id="sorter-list-name" placeholder="List name..." style="flex:1;padding:6px 10px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-secondary);color:var(--text-primary);font-size:12px;">
+                            <button class="btn btn-sm btn-primary" onclick="saveSorterList()">Save Current</button>
+                        </div>
+                    </div>
+                    <div style="margin-top:16px;padding:12px;background:var(--bg-tertiary);border-radius:8px;font-size:12px;color:var(--text-secondary);">
+                        <strong>Sky Email Sorter</strong> — Classifies contacts by MX record provider automatically during verification.
+                        Use <strong>Export</strong> to download per-provider TXT files.
+                    </div>
+                </div>
             </div>
         </div>
         
@@ -822,6 +901,7 @@
     <div class="modal" id="companies-modal">
         <div class="modal-content" style="max-width: 1200px; width: 95%;">
             <div class="modal-header">
+                <button onclick="closeModal('companies-modal');showFailedBreakdown()" style="background:none;border:none;cursor:pointer;color:var(--accent);font-size:13px;margin-right:8px;padding:4px 8px;">← Back</button>
                 <h2>Companies</h2>
                 <button onclick="closeModal('companies-modal')">&times;</button>
             </div>
@@ -882,6 +962,7 @@
     <div class="modal" id="contacts-modal">
         <div class="modal-content" style="max-width: 1100px; width: 95%;">
             <div class="modal-header">
+                <button onclick="closeModal('contacts-modal');showFailedBreakdown()" style="background:none;border:none;cursor:pointer;color:var(--accent);font-size:13px;margin-right:8px;padding:4px 8px;">← Back</button>
                 <h2>Contacts</h2>
                 <button onclick="closeModal('contacts-modal')">&times;</button>
             </div>
@@ -902,6 +983,9 @@
                         <option value="imported">Imported</option>
                         <option value="enriched">Enriched</option>
                     </select>
+                    <select id="contacts-provider-filter" onchange="applyContactsFilters()" style="width: 120px;">
+                        <option value="">All Providers</option>
+                    </select>
                 </div>
                 <div id="contacts-company-badge" style="display:none;margin-bottom:6px;padding:4px 8px;background:var(--bg-tertiary);border-radius:6px;font-size:13px;align-items:center;gap:6px;">
                     <button onclick="backToCompanies()" style="background:none;border:none;cursor:pointer;font-size:13px;color:var(--accent);padding:2px 8px 2px 4px;border-radius:4px;font-weight:500;">← Back to Companies</button>
@@ -914,13 +998,15 @@
                         <thead>
                             <tr>
                                 <th style="width:30px;"><input type="checkbox" id="contacts-select-all" onchange="toggleSelectAll('contacts')" title="Select all"></th>
-                                <th onclick="sortContacts('email')" style="cursor:pointer;width:15%;">Email<span id="sort-cemail" class="sort-arrow"></span></th>
-                                <th onclick="sortContacts('job_title')" style="cursor:pointer;width:15%;">Job Title<span id="sort-cjob_title" class="sort-arrow"></span></th>
-                                <th style="width:13%;">Company</th>
-                                <th onclick="sortContacts('verification_status')" style="cursor:pointer;width:13%;">Verification<span id="sort-cverification_status" class="sort-arrow"></span></th>
-                                <th onclick="sortContacts('source')" style="cursor:pointer;width:10%;">Source<span id="sort-csource" class="sort-arrow"></span></th>
-                                <th onclick="sortContacts('is_verified')" style="cursor:pointer;width:9%;">Verified<span id="sort-cis_verified" class="sort-arrow"></span></th>
-                                <th onclick="sortContacts('created_at')" style="cursor:pointer;width:18%;">Created<span id="sort-ccreated_at" class="sort-arrow"></span></th>
+                                <th onclick="sortContacts('email')" style="cursor:pointer;width:14%;">Email<span id="sort-cemail" class="sort-arrow"></span></th>
+                                <th onclick="sortContacts('job_title')" style="cursor:pointer;width:12%;">Job Title<span id="sort-cjob_title" class="sort-arrow"></span></th>
+                                <th style="width:10%;">Company</th>
+                                <th onclick="sortContacts('verification_status')" style="cursor:pointer;width:11%;">Verification<span id="sort-cverification_status" class="sort-arrow"></span></th>
+                                <th onclick="sortContacts('provider')" style="cursor:pointer;width:8%;">Provider<span id="sort-cprovider" class="sort-arrow"></span></th>
+                                <th onclick="sortContacts('source')" style="cursor:pointer;width:8%;">Source<span id="sort-csource" class="sort-arrow"></span></th>
+                                <th onclick="sortContacts('is_verified')" style="cursor:pointer;width:7%;">Verified<span id="sort-cis_verified" class="sort-arrow"></span></th>
+                                <th style="width:10%;">Tags</th>
+                                <th onclick="sortContacts('created_at')" style="cursor:pointer;width:13%;">Created<span id="sort-ccreated_at" class="sort-arrow"></span></th>
                             </tr>
                         </thead>
                         <tbody id="contacts-modal-list"><tr><td colspan="8"><div class="loading-spinner"></div></td></tr></tbody>
@@ -943,6 +1029,7 @@
     <div class="modal" id="jobs-modal">
         <div class="modal-content" style="max-width: 1200px; width: 95%;">
             <div class="modal-header">
+                <button onclick="closeModal('jobs-modal');showFailedBreakdown()" style="background:none;border:none;cursor:pointer;color:var(--accent);font-size:13px;margin-right:8px;padding:4px 8px;">← Back</button>
                 <h2 id="jobs-modal-title">Jobs</h2>
                 <button onclick="closeModal('jobs-modal')">&times;</button>
             </div>
@@ -980,6 +1067,49 @@
                     <button class="btn btn-primary" id="mode-confirm-btn" onclick="confirmModeSwitch()">Confirm</button>
                 </div>
                 <div id="mode-confirm-message" style="margin-top: 16px; padding: 12px; border-radius: 6px; display: none;"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="failed-breakdown-modal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h2>Pipeline Failures</h2>
+                <button onclick="closeModal('failed-breakdown-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div style="display:grid;gap:12px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:var(--bg-tertiary);border-radius:8px;cursor:pointer;" onclick="closeModal('failed-breakdown-modal');showJobsModal('failed')">
+                        <span>Failed Discovery Jobs</span>
+                        <span style="font-weight:700;color:#ef4444;" id="fb-jobs">0</span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:var(--bg-tertiary);border-radius:8px;cursor:pointer;" onclick="closeModal('failed-breakdown-modal');showCompaniesModal('failed')">
+                        <span>Failed Browsing Companies</span>
+                        <span style="font-weight:700;color:#ef4444;" id="fb-companies">0</span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:var(--bg-tertiary);border-radius:8px;cursor:pointer;" onclick="closeModal('failed-breakdown-modal');showCompaniesModal('enriched', {hasFailure:true})">
+                        <span>Failed Enrichments</span>
+                        <span style="font-weight:700;color:#ef4444;" id="fb-enrichments">0</span>
+                    </div>
+                    <div style="padding:8px 12px;background:var(--bg-tertiary);border-radius:8px;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;">
+                            <span style="font-size:13px;">Failed Contacts</span>
+                            <span style="font-weight:700;color:#ef4444;font-size:13px;" id="fb-contacts">0</span>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;align-items:center;padding:2px 0 2px 16px;font-size:12px;color:var(--text-secondary);cursor:pointer;" onclick="closeModal('failed-breakdown-modal');showContactsModal('failed')">
+                            <span>▸ Pipeline</span>
+                            <span id="fb-pipeline-contacts">0</span>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;align-items:center;padding:2px 0 2px 16px;font-size:12px;color:var(--text-secondary);cursor:pointer;" onclick="closeModal('failed-breakdown-modal');showContactsModal('failed');setTimeout(()=>{document.getElementById('contacts-source-filter').value='imported';applyContactsFilters()},200)">
+                            <span>Imported</span>
+                            <span id="fb-imported-contacts">0</span>
+                        </div>
+                    </div>
+                    <div style="border-top:1px solid var(--border-color);padding-top:12px;display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:16px;">
+                        <span>Total</span>
+                        <span style="color:#ef4444;" id="fb-total">0</span>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -1112,6 +1242,8 @@ function initWebSocket() {
                 // Server responded to our ping
             } else if (message.type === "verification_progress") {
                 updateVerifierProgress(message.data);
+                const sp = document.getElementById('sorter-panel');
+                if (sp && sp.style.display !== 'none') loadSorterData();
             } else if (message.type === "enrichment_progress") {
                 updateEnrichmentProgress(message.data);
             } else if (message.type === "browsing_progress") {
@@ -1208,7 +1340,7 @@ function updateDashboardMetrics(metrics) {
     animateCounter(document.getElementById('completed-jobs'), metrics.completed_jobs);
   }
   if (metrics.failed_jobs !== undefined) {
-    animateCounter(document.getElementById('failed-jobs'), metrics.failed_jobs);
+    animateCounter(document.getElementById('failed-total'), metrics.failed_total);
   }
 }
          
@@ -1250,7 +1382,7 @@ function updateDashboardMetrics(metrics) {
 // Skeleton loading helpers
 function showSkeleton() {
   // Add skeleton class to existing stat elements instead of replacing them
-  const ids = ['total-companies', 'total-contacts', 'verified-contacts', 'pending-jobs', 'completed-jobs', 'failed-jobs'];
+  const ids = ['total-companies', 'total-contacts', 'verified-contacts', 'pending-jobs', 'completed-jobs', 'failed-total'];
   ids.forEach(id => {
     const el = document.getElementById(id);
     if (el) {
@@ -1268,7 +1400,7 @@ function showSkeleton() {
 
 function hideSkeleton() {
   // Remove skeleton classes from stat elements
-  const ids = ['total-companies', 'total-contacts', 'verified-contacts', 'pending-jobs', 'completed-jobs', 'failed-jobs'];
+  const ids = ['total-companies', 'total-contacts', 'verified-contacts', 'pending-jobs', 'completed-jobs', 'failed-total'];
   ids.forEach(id => {
     const el = document.getElementById(id);
     if (el) {
@@ -1502,6 +1634,7 @@ function animateCounter(element, target, duration = 1000) {
         function renderDashboardData(data) {
             // Reset exponential backoff after successful refresh
             window.serviceActionCount = 0;
+            window._lastMetrics = data.metrics;
             
             updateDbStatus(data.db_status);
 
@@ -2280,6 +2413,247 @@ function animateCounter(element, target, duration = 1000) {
             }).join('');
         }
 
+        let sorterChart = null;
+
+        function toggleSorterPanel() {
+            const panel = document.getElementById('sorter-panel');
+            const vis = panel.style.display !== 'none';
+            panel.style.display = vis ? 'none' : 'block';
+            if (!vis) {
+                loadSorterData();
+                setTimeout(() => {
+                    const rect = panel.getBoundingClientRect();
+                    window.scrollTo({ top: window.scrollY + rect.top - 80, behavior: 'smooth' });
+                }, 100);
+            }
+        }
+
+        async function loadSorterData() {
+            try {
+                // Load stats cards
+                const statsRes = await fetch(`${API}/sorter/stats`);
+                const stats = await statsRes.json();
+                document.getElementById('sst-total').textContent = (stats.total_contacts || 0).toLocaleString();
+                document.getElementById('sst-unresolved').textContent = (stats.unresolved || 0).toLocaleString();
+
+                document.getElementById('sst-failed').textContent = (stats.failed || 0).toLocaleString();
+                document.getElementById('sst-duplicates').textContent = (stats.duplicates || 0).toLocaleString();
+
+                // Update verifier status indicator
+                fetch(`${API}/services/status`).then(r => r.json()).then(services => {
+                    const v = services.find(s => s.name === 'verification');
+                    const dot = document.getElementById('sst-verifier-dot');
+                    const txt = document.getElementById('sst-verifier-text');
+                    if (!dot) return;
+                    if (v && v.status === 'running') {
+                        dot.className = 'connection-dot connected';
+                        dot.style.animation = 'pulse 1s infinite';
+                        txt.textContent = 'Running';
+                    } else {
+                        dot.className = 'connection-dot disconnected';
+                        dot.style.animation = '';
+                        txt.textContent = 'Stopped';
+                    }
+                }).catch(() => {});
+
+                const res = await fetch(`${API}/sorter/provider-breakdown`);
+                const data = await res.json();
+                const total = data.total_contacts || 0;
+                document.getElementById('sorter-total').textContent = `${total.toLocaleString()} contacts`;
+
+                const el = document.getElementById('sorter-breakdown');
+                if (!data.breakdown || data.breakdown.length === 0) {
+                    el.innerHTML = '<div style="color:var(--text-secondary);padding:12px 0;">No classified contacts. Run "Resolve MX" first.</div>';
+                    return;
+                }
+
+                // Render provider table
+                const maxCount = Math.max(...data.breakdown.map(b => b.total), 1);
+                el.innerHTML = data.breakdown.map(b => {
+                    const pct = ((b.total / maxCount) * 100).toFixed(0);
+                    const verifiedPct = b.total > 0 ? ((b.verified / b.total) * 100).toFixed(0) : 0;
+                    return `<div style="display:flex;align-items:center;gap:8px;padding:4px 0;">
+                        <span style="width:80px;font-weight:600;color:var(--text-primary);">${b.provider}</span>
+                        <div style="flex:1;height:18px;background:var(--bg-tertiary);border-radius:4px;overflow:hidden;">
+                            <div style="width:${pct}%;height:100%;background:#3b82f6;border-radius:4px;transition:width 0.4s;"></div>
+                        </div>
+                        <span style="width:60px;text-align:right;font-weight:600;">${b.total.toLocaleString()}</span>
+                        <span style="width:50px;text-align:right;font-size:11px;color:var(--text-secondary);">${verifiedPct}% v</span>
+                    </div>`;
+                }).join('');
+
+                // Render Chart.js donut
+                const canvas = document.getElementById('sorterChart');
+                if (!canvas) return;
+                const labels = data.breakdown.map(b => b.provider);
+                const values = data.breakdown.map(b => b.total);
+                const colors = ['#ea4335','#4285f4','#34a853','#fbbc04','#8e24aa','#00acc1','#e91e63','#795548','#607d8b','#9e9e9e'];
+
+                if (sorterChart) { sorterChart.destroy(); sorterChart = null; }
+                const ctx = canvas.getContext('2d');
+                sorterChart = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels,
+                        datasets: [{ data: values, backgroundColor: colors.slice(0, values.length), borderWidth: 1 }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { position: 'right', labels: { boxWidth: 12, padding: 8, color: '#94a3b8', font: { size: 11 } } }
+                        }
+                    }
+                });
+
+                // Load MX domains
+                loadSorterDomains();
+                loadSorterLists();
+
+            } catch (e) {
+                console.error('Sorter data error:', e);
+                document.getElementById('sorter-breakdown').innerHTML = '<div style="color:var(--danger);">Failed to load</div>';
+            }
+        }
+
+        async function loadSorterDomains() {
+            try {
+                const res = await fetch(`${API}/sorter/domains`);
+                const data = await res.json();
+                const el = document.getElementById('sorter-domains');
+                if (!data.domains || data.domains.length === 0) {
+                    el.innerHTML = '<div style="color:var(--text-secondary);">No MX domains found</div>';
+                    return;
+                }
+                el.innerHTML = '<div style="display:flex;flex-wrap:wrap;gap:6px;">' +
+                    data.domains.map(d => `<div style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;background:var(--bg-tertiary);border-radius:6px;font-size:11px;border:1px solid var(--border-color);">
+                        <span class="badge provider-${d.provider}" style="font-size:9px;padding:2px 6px;">${d.provider}</span>
+                        <span style="font-family:monospace;color:var(--text-primary);">${d.mx_domain}</span>
+                        <span style="font-weight:600;color:var(--text-secondary);">${d.count}</span>
+                    </div>`).join('') +
+                '</div>';
+            } catch (e) {
+                document.getElementById('sorter-domains').innerHTML = '<div style="color:var(--danger);">Failed to load</div>';
+            }
+        }
+
+        async function processSorter() {
+            const btn = event.target;
+            btn.disabled = true;
+            btn.textContent = 'Processing...';
+            try {
+                const res = await fetch(`${API}/sorter/process`, { method: 'POST' });
+                const data = await res.json();
+                if (data.classified > 0) {
+                    showToast(`Classified ${data.classified} contacts: ${JSON.stringify(data.by_provider)}`, 'success');
+                } else {
+                    showToast('No unclassified contacts found', 'info');
+                }
+                loadSorterData();
+            } catch (e) {
+                showToast('Process failed', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Process Unclassified';
+            }
+        }
+
+        async function resolveSorterMX() {
+            const btn = event.target;
+            btn.disabled = true;
+            btn.textContent = 'Resolving...';
+            try {
+                const res = await fetch(`${API}/sorter/resolve-mx`, { method: 'POST' });
+                const data = await res.json();
+                if (data.classified > 0) {
+                    showToast(`Resolved MX for ${data.classified} contacts`, 'success');
+                } else {
+                    showToast('No unresolved contacts', 'info');
+                }
+                loadSorterData();
+            } catch (e) {
+                showToast('MX resolve failed', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Resolve MX';
+            }
+        }
+
+        async function dedupSorter() {
+            if (!confirm('Remove duplicate emails? This cannot be undone.')) return;
+            try {
+                const res = await fetch(`${API}/sorter/dedup`, { method: 'POST' });
+                const data = await res.json();
+                showToast(`Removed ${data.removed} duplicates, kept ${data.kept}`, 'success');
+                loadSorterData();
+            } catch (e) {
+                showToast('Dedup failed', 'error');
+            }
+        }
+
+        async function exportSorter() {
+            try {
+                const res = await fetch(`${API}/sorter/export`);
+                if (!res.ok) { showToast('No classified contacts to export', 'warning'); return; }
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `emails_by_provider.zip`;
+                a.click();
+                URL.revokeObjectURL(url);
+                showToast('Export downloaded', 'success');
+            } catch (e) {
+                showToast('Export failed', 'error');
+            }
+        }
+
+        async function loadSorterLists() {
+            try {
+                const res = await fetch(`${API}/sorter/lists`);
+                const data = await res.json();
+                const el = document.getElementById('sorter-lists');
+                if (!data.lists || data.lists.length === 0) {
+                    el.innerHTML = '<div style="color:var(--text-secondary);">No saved lists</div>';
+                    return;
+                }
+                el.innerHTML = '<table class="table"><thead><tr><th>Name</th><th>Emails</th><th>Providers</th><th>Created</th><th></th></tr></thead><tbody>' +
+                    data.lists.map(lst => {
+                        const providers = lst.provider_breakdown ? Object.entries(lst.provider_breakdown).map(([p, c]) => `${p}:${c}`).join(', ') : '-';
+                        return `<tr>
+                            <td><strong>${lst.name}</strong>${lst.description ? '<br><span style="font-size:10px;color:var(--text-secondary);">'+lst.description+'</span>' : ''}</td>
+                            <td>${lst.total_emails.toLocaleString()}</td>
+                            <td style="font-size:10px;">${providers}</td>
+                            <td>${lst.created_at ? new Date(lst.created_at).toLocaleDateString() : '-'}</td>
+                            <td>
+                                <button class="btn btn-sm btn-secondary" onclick="fetch('${API}/sorter/lists/${lst.id}/export').then(r=>r.blob()).then(b=>{const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='${lst.name}.zip';a.click();showToast('Downloaded','success')})" style="font-size:10px;">Export</button>
+                                <button class="btn btn-sm btn-danger" onclick="fetch('${API}/sorter/lists/${lst.id}',{method:'DELETE'}).then(()=>loadSorterLists())" style="font-size:10px;">Del</button>
+                            </td>
+                        </tr>`;
+                    }).join('') + '</tbody></table>';
+            } catch (e) {
+                document.getElementById('sorter-lists').innerHTML = '<div style="color:var(--danger);">Failed to load lists</div>';
+            }
+        }
+
+        async function saveSorterList() {
+            const name = document.getElementById('sorter-list-name').value.trim();
+            if (!name) { showToast('Enter a list name', 'warning'); return; }
+            try {
+                const res = await fetch(`${API}/sorter/lists`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({name: name, description: '', provider_filter: ''})
+                });
+                if (!res.ok) throw new Error('Save failed');
+                document.getElementById('sorter-list-name').value = '';
+                showToast('List saved', 'success');
+                loadSorterLists();
+            } catch (e) {
+                showToast('Failed to save list', 'error');
+            }
+        }
+
         async function serviceAction(action, btn) {
             const node = btn.closest('.pipeline-node');
             const service = btn.dataset.service;
@@ -2787,7 +3161,7 @@ function animateCounter(element, target, duration = 1000) {
 
         // --- Companies pagination state ---
         let companiesPage = 1, companiesTotal = 0, companiesPages = 0;
-        let companiesSearch = '', companiesStatus = '', companiesSource = '';
+        let companiesSearch = '', companiesStatus = '', companiesSource = '', companiesHasFailure = false;
         let companiesSortBy = 'created_at', companiesSortOrder = 'desc';
         let companiesController = null;
         let companiesSearchDebounce = null;
@@ -2817,6 +3191,7 @@ function animateCounter(element, target, duration = 1000) {
             companiesSearch = document.getElementById('companies-search').value;
             companiesStatus = document.getElementById('companies-filter').value;
             companiesSource = document.getElementById('companies-source-filter').value;
+            companiesHasFailure = false;
             companiesPage = 1;
             fetchCompanies();
         }
@@ -2830,6 +3205,7 @@ function animateCounter(element, target, duration = 1000) {
                 if (companiesSearch) url += `&search=${encodeURIComponent(companiesSearch)}`;
                 if (companiesStatus) url += `&status=${companiesStatus}`;
                 if (companiesSource) url += `&lead_source=${companiesSource}`;
+                if (companiesHasFailure) url += `&has_failure=true`;
                 url += `&sort_by=${companiesSortBy}&sort_order=${companiesSortOrder}`;
                 const res = await fetch(url, { signal: controller.signal });
                 const data = await res.json();
@@ -2940,13 +3316,14 @@ function animateCounter(element, target, duration = 1000) {
             document.getElementById('companies-next').disabled = companiesPage >= companiesPages;
         }
 
-        async function showCompaniesModal() {
+        async function showCompaniesModal(statusFilter = '', options = {}) {
             document.getElementById('companies-modal').classList.add('active');
             document.getElementById('companies-search').value = '';
             companiesSearch = '';
-            companiesStatus = '';
+            companiesStatus = statusFilter;
             companiesSource = '';
-            document.getElementById('companies-filter').value = '';
+            companiesHasFailure = options.hasFailure || false;
+            document.getElementById('companies-filter').value = statusFilter;
             document.getElementById('companies-source-filter').value = '';
             companiesPage = 1;
             companiesSortBy = 'created_at';
@@ -2972,7 +3349,7 @@ function animateCounter(element, target, duration = 1000) {
 
         // --- Contacts pagination state ---
         let contactsPage = 1, contactsTotal = 0, contactsPages = 0;
-        let contactsSearch = '', contactsStatus = '', contactsSource = '';
+        let contactsSearch = '', contactsStatus = '', contactsSource = '', contactsProvider = '';
         let contactsCompanyId = null;
         let contactsSortBy = 'created_at', contactsSortOrder = 'desc';
         let contactsController = null;
@@ -2988,6 +3365,7 @@ function animateCounter(element, target, duration = 1000) {
             contactsSearch = document.getElementById('contacts-search').value;
             contactsStatus = document.getElementById('contacts-filter').value;
             contactsSource = document.getElementById('contacts-source-filter').value;
+            contactsProvider = document.getElementById('contacts-provider-filter').value;
             contactsPage = 1;
             fetchContacts();
         }
@@ -3028,10 +3406,13 @@ function animateCounter(element, target, duration = 1000) {
                 let url = `${API}/contacts?page=${contactsPage}&limit=500`;
                 if (contactsSearch) url += `&search=${encodeURIComponent(contactsSearch)}`;
                 if (contactsStatus) {
-                    const sv = contactsStatus === 'verified' ? 'verified,valid_verified' : contactsStatus;
+                    const sv = contactsStatus === 'verified' ? 'verified,valid_verified'
+                        : contactsStatus === 'failed' ? 'failed,invalid_syntax,no_mx_records'
+                        : contactsStatus;
                     url += `&verification_status=${sv}`;
                 }
                 if (contactsSource) url += `&source=${contactsSource}`;
+                if (contactsProvider) url += `&provider=${contactsProvider}`;
                 if (contactsCompanyId) url += `&company_id=${contactsCompanyId}`;
                 url += `&sort_by=${contactsSortBy}&sort_order=${contactsSortOrder}`;
                 const res = await fetch(url, { signal: controller.signal });
@@ -3051,20 +3432,23 @@ function animateCounter(element, target, duration = 1000) {
         function renderContacts(items) {
             const tbody = document.getElementById('contacts-modal-list');
             if (items.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No contacts found</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="10" class="empty-state">No contacts found</td></tr>';
             } else {
-                tbody.innerHTML = items.map(c => `
-                    <tr>
+                tbody.innerHTML = items.map(c => {
+                    const tags = c.tags ? c.tags.split(',').filter(Boolean).map(t => `<span class="badge tag">${t}</span>`).join(' ') : '';
+                    return `<tr>
                         <td style="width:30px;"><input type="checkbox" class="row-select contacts-select" value="${c.id}" onchange="updateBatchActions('contacts')"></td>
                         <td>${c.email}</td>
                         <td>${c.job_title || '-'}</td>
                         <td>${c.company_domain || '-'}</td>
                         <td><span class="badge ${c.verification_status}">${c.verification_status}</span></td>
+                        <td><span class="badge provider-${c.provider || 'Unknown'}">${c.provider || '-'}</span></td>
                         <td><span class="badge source-${c.source || 'enriched'}">${c.source || 'enriched'}</span></td>
                         <td>${c.is_verified ? 'Yes' : 'No'}</td>
+                        <td>${tags || '-'}</td>
                         <td>${c.created_at ? new Date(c.created_at).toLocaleDateString() : '-'}</td>
-                    </tr>
-                `).join('');
+                    </tr>`;
+                }).join('');
                 document.getElementById('contacts-select-all').checked = false;
             }
             updateContactsSortArrows();
@@ -3093,7 +3477,17 @@ function animateCounter(element, target, duration = 1000) {
             document.getElementById('contacts-search').value = '';
             contactsSearch = '';
             contactsSource = '';
+            contactsProvider = '';
             document.getElementById('contacts-source-filter').value = '';
+            document.getElementById('contacts-provider-filter').value = '';
+            // Load provider dropdown
+            fetch(`${API}/sorter/providers`).then(r => r.json()).then(data => {
+                const sel = document.getElementById('contacts-provider-filter');
+                const current = sel.value;
+                sel.innerHTML = '<option value="">All Providers</option>' +
+                    (data.providers || []).map(p => `<option value="${p}">${p}</option>`).join('');
+                sel.value = current;
+            }).catch(() => {});
             contactsPage = 1;
             if (initialFilter) {
                 document.getElementById('contacts-filter').value = initialFilter;
@@ -3175,6 +3569,21 @@ function animateCounter(element, target, duration = 1000) {
                     el.textContent = ' \u2195';
                 }
             }
+        }
+
+        function showFailedBreakdown() {
+            const m = window._lastMetrics;
+            if (!m) return;
+            document.getElementById('fb-jobs').textContent = (m.failed_jobs || 0).toLocaleString();
+            document.getElementById('fb-companies').textContent = (m.failed_companies || 0).toLocaleString();
+            document.getElementById('fb-enrichments').textContent = (m.failed_enrichments || 0).toLocaleString();
+            const fc = m.failed_contacts || 0;
+            const fic = m.failed_imported_contacts || 0;
+            document.getElementById('fb-contacts').textContent = fc.toLocaleString();
+            document.getElementById('fb-pipeline-contacts').textContent = (fc - fic).toLocaleString();
+            document.getElementById('fb-imported-contacts').textContent = fic.toLocaleString();
+            document.getElementById('fb-total').textContent = (m.failed_total || 0).toLocaleString();
+            document.getElementById('failed-breakdown-modal').classList.add('active');
         }
 
         async function showJobsModal(statusFilter = '') {

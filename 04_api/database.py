@@ -15,6 +15,7 @@ from shared_models import (
     DiscoveryJob,
     JobTemplate,
     ServiceMetrics,
+    EmailList,
     update_job_stats,
 )
 
@@ -58,6 +59,8 @@ def _ensure_indexes():
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_discovery_jobs_created_at ON discovery_jobs(created_at)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_companies_industry ON companies(industry)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_companies_created_at ON companies(created_at)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_contacts_mx_domain ON contacts(mx_domain)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_contacts_provider ON contacts(provider)"))
         conn.commit()
 
 
@@ -70,6 +73,7 @@ def _migrate_missing_columns():
         'browse_heartbeat', 'has_contact_link', 'has_address', 'has_social_links',
         'has_email_on_homepage', 'is_parked', 'language_match', 'last_heartbeat',
         'last_job_id', 'job_id', 'source',
+        'mx_domain', 'provider', 'tags',
     }
     
     with engine.connect() as conn:
@@ -86,6 +90,9 @@ def _migrate_missing_columns():
             ("job_stats", "last_job_id", "INTEGER"),
             ("companies", "job_id", "INTEGER"),
             ("contacts", "source", "VARCHAR(50)"),
+            ("contacts", "mx_domain", "VARCHAR(255)"),
+            ("contacts", "provider", "VARCHAR(50)"),
+            ("contacts", "tags", "TEXT"),
         ]
         for table, column, col_type in columns_to_add:
             if table not in allowed_tables or column not in allowed_columns:

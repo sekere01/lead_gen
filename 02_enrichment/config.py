@@ -30,7 +30,7 @@ class Settings:
     OUTPUT_DIR: str = os.getenv("OUTPUT_DIR", "/tmp/leadgen_harvester")
     
     # Enrichment reliability config
-    ENRICHMENT_TIMEOUT_DOMAIN: int = int(os.getenv("ENRICHMENT_TIMEOUT_DOMAIN", "60"))
+    ENRICHMENT_TIMEOUT_DOMAIN: int = int(os.getenv("ENRICHMENT_TIMEOUT_DOMAIN", "120"))
     ENRICHMENT_MAX_RETRIES: int = int(os.getenv("ENRICHMENT_MAX_RETRIES", "3"))
     ENRICHMENT_MAX_RETRIES_PHASE2: int = int(os.getenv("ENRICHMENT_MAX_RETRIES_PHASE2", "2"))
     ENRICHMENT_WATCHDOG_MINUTES: int = int(os.getenv("ENRICHMENT_WATCHDOG_MINUTES", "15"))

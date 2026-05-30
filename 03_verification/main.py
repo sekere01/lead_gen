@@ -17,6 +17,7 @@ from sqlalchemy import update, or_
 from config import settings
 
 from services.email_verify import verify_email_fast
+from utils.email_utils import classify_provider
 
 LOG_DIR = os.getenv("LOG_DIR", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logs"))
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -58,15 +59,17 @@ def verify_contact(contact) -> dict:
     try:
         result = verify_email_fast(contact.email)
 
+        mx_domain = result.get('mx_domain')
+        provider = classify_provider(mx_domain) if mx_domain else 'Unknown'
         if not result.get('is_valid_syntax'):
             logger.info(f"Unverified (syntax/noise): {contact.email} -> {result['verification_status']}")
-            return {'is_verified': False, 'verification_status': result['verification_status']}
+            return {'is_verified': False, 'verification_status': result['verification_status'], 'mx_domain': mx_domain, 'provider': provider}
 
         if not result['has_mx_records']:
             logger.info(f"Unverified (no MX): {contact.email}")
-            return {'is_verified': False, 'verification_status': 'no_mx_records'}
+            return {'is_verified': False, 'verification_status': 'no_mx_records', 'mx_domain': mx_domain, 'provider': provider}
 
-        return {'is_verified': True, 'verification_status': 'verified'}
+        return {'is_verified': True, 'verification_status': 'verified', 'mx_domain': mx_domain, 'provider': provider}
 
     except Exception as e:
         logger.error(f"Error verifying contact {contact.email}: {e}")
@@ -166,6 +169,7 @@ def run_verifier():
                 pending_query = db.query(Contact).filter(
                     or_(
                         Contact.verification_status == 'pending',
+                        Contact.verification_status == 'failed',
                         Contact.verification_status.is_(None)
                     )
                 )
@@ -197,7 +201,9 @@ def run_verifier():
                                 verification_updates.append({
                                     'id': contact.id,
                                     'is_verified': result['is_verified'],
-                                    'verification_status': result['verification_status']
+                                    'verification_status': result['verification_status'],
+                                    'mx_domain': result.get('mx_domain', ''),
+                                    'provider': result.get('provider', 'Unknown'),
                                 })
                                 if result['is_verified']:
                                     total_verified += 1
@@ -206,6 +212,13 @@ def run_verifier():
                             except Exception as e:
                                 logger.error(f"Error verifying contact {contact.email}: {e}")
                                 total_failed += 1
+                                verification_updates.append({
+                                    'id': contact.id,
+                                    'is_verified': False,
+                                    'verification_status': 'failed',
+                                    'mx_domain': '',
+                                    'provider': 'Unknown',
+                                })
                             
                             contacts_done += 1
                             if contacts_done % 5 == 0 or contacts_done == len(contacts):
@@ -226,7 +239,9 @@ def run_verifier():
                                     Contact.id == update_data['id']
                                 ).values(
                                     is_verified=update_data['is_verified'],
-                                    verification_status=update_data['verification_status']
+                                    verification_status=update_data['verification_status'],
+                                    mx_domain=update_data['mx_domain'],
+                                    provider=update_data['provider'],
                                 )
                                 db.execute(stmt)
                             db.commit()

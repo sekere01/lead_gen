@@ -145,6 +145,11 @@ class PipelineMetrics(BaseModel):
     pending_jobs: int
     completed_jobs: int
     failed_jobs: int
+    failed_companies: int
+    failed_enrichments: int
+    failed_contacts: int
+    failed_imported_contacts: int
+    failed_total: int
 
 
 class DashboardStats(BaseModel):
@@ -212,6 +217,19 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
     processing_jobs = job_counts.get('processing', 0)
     completed_jobs = job_counts.get('completed', 0)
     failed_jobs = job_counts.get('failed', 0)
+    failed_companies = company_by_status.get('failed', 0)
+    failed_enrichments = db.query(Company).filter(
+        Company.status == 'enriched', Company.failure_reason.isnot(None)
+    ).count()
+    failed_contacts = sum(
+        c for s, c in contact_by_vstatus.items()
+        if s in ('invalid_syntax', 'no_mx_records', 'failed')
+    )
+    failed_imported_contacts = db.query(Contact).filter(
+        Contact.verification_status.in_(['invalid_syntax', 'no_mx_records', 'failed']),
+        Contact.source == 'imported'
+    ).count()
+    failed_total = failed_jobs + failed_companies + failed_enrichments + failed_contacts
 
     # 5. Job queue rows (needs actual rows with ordering)
     queue_jobs = db.query(DiscoveryJob).filter(
@@ -306,7 +324,12 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
         verified_count=verified_count,
         pending_jobs=pending_jobs + processing_jobs,
         completed_jobs=completed_jobs,
-        failed_jobs=failed_jobs
+        failed_jobs=failed_jobs,
+        failed_companies=failed_companies,
+        failed_enrichments=failed_enrichments,
+        failed_contacts=failed_contacts,
+        failed_imported_contacts=failed_imported_contacts,
+        failed_total=failed_total,
     )
 
     return DashboardStats(

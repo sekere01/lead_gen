@@ -3,7 +3,7 @@ Router for API v1.
 """
 from fastapi import APIRouter
 
-from api.v1.endpoints import jobs, search, verification, companies, contacts, dashboard, services, export
+from api.v1.endpoints import jobs, search, verification, companies, contacts, dashboard, services, export, sorter
 
 router = APIRouter(prefix="/api/v1")
 
@@ -15,3 +15,4 @@ router.include_router(contacts.router)
 router.include_router(dashboard.router)
 router.include_router(services.router)
 router.include_router(export.router)
+router.include_router(sorter.router)

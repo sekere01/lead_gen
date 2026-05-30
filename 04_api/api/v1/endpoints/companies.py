@@ -45,6 +45,7 @@ class PaginatedCompanies(BaseModel):
 def list_companies(
     status: Optional[str] = Query(None),
     lead_source: Optional[str] = Query(None),
+    has_failure: Optional[bool] = Query(None),
     search: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
     limit: int = Query(500, ge=1, le=5000),
@@ -57,6 +58,8 @@ def list_companies(
         query = db.query(Company)
         if status:
             query = query.filter(Company.status == status)
+        if has_failure:
+            query = query.filter(Company.failure_reason.isnot(None))
         if lead_source:
             query = query.filter(Company.lead_source == lead_source)
         if search:

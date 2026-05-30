@@ -15,13 +15,13 @@ jobs:
         run: |
           for svc in 01_discovery 01b_browsing 02_enrichment 03_verification 04_api; do
             if [ -f "$svc/requirements.txt" ]; then
-              pip install -r "$svc/requirements.txt" --break-system-packages
+              pip install -r "$svc/requirements.txt" --user
             fi
           done
 
       - name: Lint Python code with ruff
         run: |
-          pip install ruff --break-system-packages
+          pip install ruff --user
           ruff check --output-format=github . || true
 
       - name: Validate shell scripts
@@ -47,7 +47,7 @@ jobs:
 
       - name: Run tests
         run: |
-          pip install pytest --break-system-packages
+          pip install pytest --user
           python -m pytest tests/ -v 2>/dev/null || echo "No tests found — add tests/ to enable verification"
 
       - name: Security Vulnerability & Secret Scan

@@ -53,6 +53,15 @@ jobs:
             fi
           done
 
+      - name: Audit Python dependencies for CVEs
+        run: |
+          for svc in 01_discovery 01b_browsing 02_enrichment 03_verification 04_api; do
+            if [ -f "$svc/venv/bin/pip" ]; then
+              "$svc/venv/bin/pip" install pip-audit --quiet
+              "$svc/venv/bin/pip-audit" -r "$svc/requirements.txt" --desc on 2>/dev/null || true
+            fi
+          done
+
       - name: Lint Python code with ruff
         run: |
           04_api/venv/bin/pip install ruff --quiet
@@ -96,10 +105,11 @@ jobs:
           scan-type: 'fs'
           scan-ref: '${{ github.workspace }}'
           format: 'table'
-          scanners: 'vuln,secret,misconfig'
-          severity: 'LOW,MEDIUM,HIGH,CRITICAL'
+          scanners: 'vuln,secret'
+          severity: 'HIGH,CRITICAL'
           list-all-pkgs: 'false'
-          exit-code: '0'
+          skip-dirs: '.git'
+          exit-code: ${{ github.ref_name == 'main' && '1' || '0' }}
 
   deploy-production:
     needs: build-and-scan

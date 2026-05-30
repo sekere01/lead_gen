@@ -41,6 +41,9 @@ logs/
 *.sqlite
 *.sqlite3
 
+# CI / CD
+.commitshow/
+
 # Cache & Runtime
 *.lock
 *.pid

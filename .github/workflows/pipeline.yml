@@ -55,10 +55,16 @@ jobs:
           04_api/venv/bin/pip install ruff --quiet
           ruff check --output-format=github . || true
 
-      - name: Validate shell scripts
+      - name: Lint Shell Scripts with ShellCheck
         run: |
-          sudo apt-get install -y shellcheck
+          export DEBIAN_FRONTEND=noninteractive
+          if ! command -v shellcheck &> /dev/null; then
+            echo "ShellCheck not found. Installing..."
+            sudo -E apt-get update -y && sudo -E apt-get install -y shellcheck
+          fi
+          echo "Running ShellCheck analysis..."
           shellcheck deploy.sh setup.sh || true
+        shell: bash
 
       - name: Check .gitignore compliance
         run: |

@@ -14,14 +14,16 @@ jobs:
       - name: Install all service dependencies
         run: |
           for svc in 01_discovery 01b_browsing 02_enrichment 03_verification 04_api; do
-            if [ -f "$svc/requirements.txt" ]; then
-              pip install -r "$svc/requirements.txt" --user
+            if [ -f "$svc/requirements.txt" ] && [ -f "$svc/venv/bin/pip" ]; then
+              "$svc/venv/bin/pip" install -r "$svc/requirements.txt" --quiet
+            elif [ -f "$svc/requirements.txt" ]; then
+              pip install -r "$svc/requirements.txt"
             fi
           done
 
       - name: Lint Python code with ruff
         run: |
-          pip install ruff --user
+          04_api/venv/bin/pip install ruff --quiet
           ruff check --output-format=github . || true
 
       - name: Validate shell scripts
@@ -47,7 +49,7 @@ jobs:
 
       - name: Run tests
         run: |
-          pip install pytest --user
+          04_api/venv/bin/pip install pytest --quiet
           python -m pytest tests/ -v 2>/dev/null || echo "No tests found — add tests/ to enable verification"
 
       - name: Security Vulnerability & Secret Scan

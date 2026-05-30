@@ -1,4 +1,4 @@
-# Lead Generation Engine - User Guide
+# Lead Generation Engine + Sky Email Sorter — User Guide
 
 ## Table of Contents
 
@@ -7,7 +7,7 @@
 3. [Quick Start](#quick-start)
 4. [Creating Jobs](#creating-jobs)
 5. [Understanding the Pipeline](#understanding-the-pipeline)
-6. [Celery Services](#celery-services)
+6. [Email Classification (Sky Email Sorter)](#email-classification-sky-email-sorter)
 7. [Dashboard & Metrics](#dashboard--metrics)
 8. [Monitoring Progress](#monitoring-progress)
 9. [Configuration](#configuration)
@@ -18,19 +18,15 @@
 
 ## Overview
 
-This is an automated lead generation system that:
+This is an automated lead generation + email sorting system that:
 
 1. **Discovers** companies from search results (DuckDuckGo, SearXNG, CommonCrawl)
 2. **Browses** their websites to score quality and extract signals
-3. **Enriches** with contact emails (theHarvester + custom crawler)
-4. **Verifies** email validity (DNS + SMTP)
+3. **Enriches** with contact emails (theHarvester + 4 other sources)
+4. **Verifies** email validity (syntax + DNS MX records)
+5. **Classifies** contacts by email provider (Gmail/Outlook/Yahoo/etc.) automatically
 
-Each stage runs as an independent service that polls the database for work. The pipeline is orchestrated with:
-
-- **PostgreSQL** - Data storage
-- **Redis** - Message broker for Celery
-- **Celery** - Async task processing
-- **Celery Beat** - Scheduled task execution
+Each stage runs as an independent service that polls the database for work. Services communicate through PostgreSQL status columns — no message queue needed.
 
 ---
 
@@ -41,37 +37,18 @@ Each stage runs as an independent service that polls the database for work. The 
 | Software | Version | Purpose |
 |----------|---------|---------|
 | **PostgreSQL** | 12+ | Database |
-| **Redis** | 6+ | Celery message broker |
-| **Docker** | Latest | theHarvester email extraction |
-| **Python** | 3.12 | Runtime |
+| **Docker** | Latest | theHarvester email extraction + SearXNG meta search |
+| **Python** | 3.12+ | Runtime |
+| **SearXNG** | Docker | Meta search engine (auto-starts via setup.sh) |
 
 ### Database Setup
 
 ```bash
 # Create the database
-createdb leadgen_db
-
-# Create user (or use existing)
-createuser leadgen_user
-psql -d leadgen_db -c "ALTER USER leadgen_user WITH PASSWORD 'leadgen_pass';"
+createdb lead_gen
 
 # Grant permissions
-psql -d leadgen_db -c "GRANT ALL PRIVILEGES ON DATABASE leadgen_db TO leadgen_user;"
-```
-
-### Redis Setup
-
-```bash
-# Install Redis
-# On Ubuntu/Debian:
-sudo apt install redis-server
-
-# Start Redis
-redis-server
-
-# Verify Redis is running
-redis-cli ping
-# Expected: PONG
+psql -d lead_gen -c "GRANT ALL PRIVILEGES ON DATABASE lead_gen TO kali;"
 ```
 
 ---
@@ -80,72 +57,54 @@ redis-cli ping
 
 ### 1. Start All Services
 
-Open 7 terminal windows:
+Open 5 terminal windows:
 
 ```bash
-# Terminal 1: Discovery Service
-cd ~/lead_gen2
+# Terminal 1: API Server
+cd /home/kali/lead_gen/04_api && PYTHONPATH=/home/kali/lead_gen ./venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port 8000
+
+# Terminal 2: Discovery Service
 ./run_discovery.sh
 
-# Terminal 2: Browsing Service
-cd ~/lead_gen2
+# Terminal 3: Browsing Service
 ./run_browsing.sh
 
-# Terminal 3: Enrichment Service
-cd ~/lead_gen2
+# Terminal 4: Enrichment Service
 ./run_enrichment.sh
 
-# Terminal 4: Verification Service
-cd ~/lead_gen2
+# Terminal 5: Verification Service
 ./run_verification.sh
-
-# Terminal 5: API Server
-cd ~/lead_gen2
-./run_api.sh
-
-# Terminal 6: Celery Worker (task processing)
-cd ~/lead_gen2
-./run_celery_worker.sh
-
-# Terminal 7: Celery Beat (scheduled metrics)
-cd ~/lead_gen2
-./run_celery_beat.sh
 ```
+
+Or use the Dashboard to control services:
+1. Open **http://localhost:8000/dashboard**
+2. Set pipeline mode to **Manual**
+3. Click **Start** on each pipeline node
 
 ### 2. Create a Discovery Job
 
 ```bash
-# Using the API
-curl -X POST http://localhost:8000/api/v1/jobs \
+curl -X POST http://localhost:8000/api/v1/discovery-jobs \
   -H "Content-Type: application/json" \
   -d '{"keyword": "tech company", "region": "india"}'
-
-# Or directly in the database
-psql -d leadgen_db -c "INSERT INTO discovery_jobs (keyword, region) VALUES ('tech company', 'india');"
 ```
 
 ### 3. Monitor Progress
 
 ```bash
 # Check job status
-psql -d leadgen_db -c "SELECT keyword, region, status, results_count FROM discovery_jobs ORDER BY id DESC LIMIT 5;"
+psql -h /var/run/postgresql -U kali -d lead_gen -c "SELECT keyword, region, status, results_count FROM discovery_jobs ORDER BY id DESC LIMIT 5;"
 
 # Check companies found
-psql -d leadgen_db -c "SELECT domain, discovery_score, status FROM companies ORDER BY id DESC LIMIT 10;"
+psql -h /var/run/postgresql -U kali -d lead_gen -c "SELECT domain, discovery_score, status FROM companies ORDER BY id DESC LIMIT 10;"
 
-# Check emails found
-psql -d leadgen_db -c "SELECT c.domain, ct.email FROM contacts ct JOIN companies c ON ct.company_id = c.id ORDER BY ct.id DESC LIMIT 10;"
+# Check contacts with provider classification
+psql -h /var/run/postgresql -U kali -d lead_gen -c "SELECT email, provider, verification_status FROM contacts ORDER BY id DESC LIMIT 10;"
 ```
 
 ### 4. View Dashboard
 
 Open in browser: **http://localhost:8000/dashboard**
-
-The dashboard provides:
-
-- Pipeline status overview
-- Job queue management
-- Live metrics chart with real-time updates
 
 ---
 
@@ -160,15 +119,16 @@ The dashboard provides:
 
 ### Examples
 
-```sql
--- Job for India tech companies
-INSERT INTO discovery_jobs (keyword, region) VALUES ('software company', 'india');
+```bash
+# Create a single job via API
+curl -X POST http://localhost:8000/api/v1/discovery-jobs \
+  -H "Content-Type: application/json" \
+  -d '{"keyword": "software company", "region": "india"}'
 
--- Job for Nigerian companies
-INSERT INTO discovery_jobs (keyword, region) VALUES ('tech startup', 'nigeria');
-
--- Global job (no region)
-INSERT INTO discovery_jobs (keyword, region) VALUES ('SaaS company', 'global');
+# Bulk create jobs
+curl -X POST http://localhost:8000/api/v1/discovery-jobs/bulk \
+  -H "Content-Type: application/json" \
+  -d '{"keywords": ["SaaS startup", "fintech company", "healthtech"], "region": "global"}'
 ```
 
 ### Region-Specific Scoring
@@ -187,13 +147,15 @@ See `01_discovery/config/tld_scores.yaml` for full TLD list.
 
 ### Stage 1: Discovery
 
-**Input**: `discovery_jobs` table (status = 'pending')
+**Input**: `discovery_jobs` table (`status = 'pending'`)
 
 **Process**:
-
-1. Polls DuckDuckGo, SearXNG, CommonCrawl for domain names
-2. Calculates regional score based on TLD and city keywords
-3. Saves companies to `companies` table
+1. Picks 1 pending job at a time (row-level lock via `FOR UPDATE SKIP LOCKED`)
+2. Runs 3 sources in parallel: DuckDuckGo, SearXNG, CommonCrawl
+3. Each source runs independently (one failure doesn't block others)
+4. LLM generates optimized search queries (via Groq with static fallback)
+5. Saves found domains to `companies` table in batches of 25
+6. Reports live progress via WebSocket after each batch
 
 **Output**: Companies with `status = 'discovered'`, `discovery_score >= 2`
 
@@ -201,17 +163,21 @@ See `01_discovery/config/tld_scores.yaml` for full TLD list.
 
 ### Stage 2: Browsing
 
-**Input**: `companies` table (`status = 'discovered'`, `discovery_score >= 2`)
+**Input**: `companies` table (`status = 'discovered'` or `'requeued'`)
 
 **Process**:
+1. Picks up to 50 companies per cycle, processes with 5 concurrent workers
+2. Each worker:
+   a. Fetches homepage via **httpx** (fast HTTP)
+   b. If HTML ≥ 2000 chars → rich content, skip Playwright
+   c. If short/empty → retry with **Playwright** (JS rendering)
+   d. Detects signals: contact links, addresses, social links, emails
+   e. Calculates browsing score
+   f. Extracts and saves emails
+3. Two-phase retry: Phase 1 (3 attempts) → Phase 2 (2 attempts) → `failed`
+4. Reports live progress after each company via WebSocket
 
-1. Fetches company homepage via HTTP
-2. Detects signals: contact links, addresses, social links, emails
-3. Calculates browsing score (max 10)
-4. Filters parked/invalid domains
-5. Saves any emails found directly to contacts
-
-**Output**: Companies with `status = 'browsed'`, updated `discovery_score`
+**Output**: Companies with `status = 'browsed'` or `'requeued'` or `'failed'`
 
 **Scoring**:
 
@@ -228,13 +194,20 @@ See `01_discovery/config/tld_scores.yaml` for full TLD list.
 
 ### Stage 3: Enrichment
 
-**Input**: `companies` table (`status = 'browsed'`)
+**Input**: `companies` table (`status = 'browsed'` or `'enrich_requeued'`)
 
 **Process**:
-
-1. Runs theHarvester Docker container to find emails
-2. Falls back to HTTP crawling if no results
-3. Saves emails to `contacts` table
+1. Picks up to 10 companies per cycle, 5 concurrent workers
+2. Each worker runs all 5 sources sequentially:
+   | # | Source | Method |
+   |---|--------|--------|
+   | 1 | **theHarvester** | Docker container (DuckDuckGo, Yahoo, CommonCrawl, etc.) |
+   | 2 | **Google Dorking** | OSINT queries via `googlesearch-python` |
+   | 3 | **Sitemap Crawl** | Parses `/sitemap.xml`, scrapes discovered pages |
+   | 4 | **Explicit Pages** | Fetches `/contact`, `/about`, `/team`, etc. |
+   | 5 | **Homepage Scan** | Direct homepage + footer email extraction |
+3. Each source gets its own timeout budget (120s per source)
+4. Reports live progress after each company via WebSocket
 
 **Output**: Companies with `status = 'enriched'`
 
@@ -242,79 +215,72 @@ See `01_discovery/config/tld_scores.yaml` for full TLD list.
 
 ### Stage 4: Verification
 
-**Input**: `contacts` table (`verification_status = 'pending'`)
+**Input**: `contacts` table (`verification_status = 'pending'` or `'failed'`)
 
 **Process**:
+1. Picks up to 200 contacts per cycle, processes in chunks of 10
+2. 10 concurrent workers, each runs:
+   ```
+   verify_email_fast(email):
+     1. Noise/placeholder filter      → invalid_syntax
+     2. Syntax validation             → invalid_syntax
+     3. Disposable domain check       → informational only
+     4. MX record lookup              → no_mx_records if none
+     5. Provider classification       → Gmail/Outlook/Yahoo/etc.
+     6. All checks pass               → verified
+   ```
+3. MX domain + provider are stored automatically in the DB
+4. Reports live progress every 5 contacts via WebSocket
+5. Failed contacts are retried automatically on next cycle
 
-1. Validates email syntax
-2. Checks disposable email domains
-3. Verifies MX records exist
-4. Optionally tests SMTP delivery
-
-**Output**: Contacts with `is_verified = true/false`
+**Output**: Contacts with `is_verified = true/false`, `provider` set
 
 ---
 
-## Celery Services
+## Email Classification (Sky Email Sorter)
 
-The pipeline uses Celery for asynchronous task processing and scheduling.
+Contacts are automatically classified by email provider during the verification stage. No manual steps needed.
 
-### Task Queues
+### Provider Map
 
-| Queue | Purpose | Tasks |
-|-------|---------|-------|
-| `discovery` | Discovery job processing | `process_discovery_job` |
-| `browsing` | Company browsing | `process_browsing` |
-| `enrichment` | Email enrichment | `process_enrichment` |
-| `verification` | Email verification | `process_verification` |
-| `default` | System tasks | `collect_metrics` |
+| Provider | MX Domain Contains | Badge Color |
+|----------|-------------------|-------------|
+| **Gmail** | `google.com`, `googlemail.com` | Red |
+| **Outlook** | `outlook.com`, `hotmail.com` | Blue |
+| **Yahoo** | `yahoo.com`, `yahoomail.com` | Purple |
+| **ProtonMail** | `protonmail`, `proton.me` | Indigo |
+| **iCloud** | `icloud.com`, `me.com` | Grey |
+| **Zoho** | `zoho`, `zohomail` | Dark Red |
+| **Other** | Everything else | Slate |
 
-### Celery Worker
+### Sorter Panel
 
-The worker picks up tasks from the queues and processes them asynchronously.
+Click the **Sorter** button in the dashboard header to open the classification panel:
 
-```bash
-# Start worker with all queues
-./run_celery_worker.sh
+**Stats Cards:**
+- **Total Contacts** — all contacts in the database
+- **Need MX Resolve** — contacts awaiting MX lookup (should be 0 normally)
+- **Failed** — contacts with invalid syntax, no MX records, or verification errors
+- **Duplicates** — duplicate email addresses (should be 0, prevented by UNIQUE constraint)
 
-# Or specify specific queues
-./run_celery_worker.sh discovery,browsing,enrichment
-```
+**Provider Breakdown:**
+- Bar chart showing count per provider
+- Donut chart (Chart.js) for visual distribution
+- Each bar shows total and verified percentage
 
-**Configuration**:
+**MX Domain Tiles:**
+- Compact pills showing provider badge, MX domain, and count
+- Wraps naturally to fit panel width
 
-- `concurrency=1` - One task at a time
-- `prefetch_multiplier=1` - Don't prefetch tasks
+**Saved Lists:**
+- Save current provider selection as a named list
+- Export any list as per-provider TXT files in a ZIP
+- Delete lists when no longer needed
 
-### Celery Beat
-
-The scheduler runs periodic tasks:
-
-| Task | Schedule | Description |
-|------|----------|-------------|
-| `collect_metrics` | Every 30 seconds | Collects pipeline metrics |
-
-```bash
-# Start beat scheduler
-./run_celery_beat.sh
-```
-
-### Managing Celery
-
-```bash
-# Check worker status
-ps aux | grep celery
-
-# Check queues for pending tasks
-redis-cli LLEN discovery
-redis-cli LLEN default
-
-# View worker logs
-tail -f /tmp/celery_worker.log
-
-# View beat logs
-tail -f /tmp/celerybeat.log
-```
+**Export:**
+- Downloads a ZIP file containing one TXT file per provider
+- Each TXT file has one email per line
+- Filename: `emails_by_provider_YYYYMMDD.zip`
 
 ---
 
@@ -326,85 +292,86 @@ tail -f /tmp/celerybeat.log
 
 ### Features
 
+#### Stats Cards
+
+| Card | Shows | Click Action |
+|------|-------|-------------|
+| **Companies** | Total companies in DB | Opens Companies modal |
+| **Contacts** | Total contacts in DB | Opens Contacts modal |
+| **Verified** | Verified contacts count | Opens Contacts modal (verified filter) |
+| **Pending Jobs** | Pending + processing jobs | — |
+| **Completed** | Completed jobs | Opens Jobs modal (completed filter) |
+| **Failed** | Pipeline-wide failure total | Opens Pipeline Failures breakdown |
+
 #### Pipeline Overview
 
-Shows real-time status of all services:
+4 pipeline nodes showing real-time status. Expand each node to see:
 
-| Service | Status | Queue Depth | Processed |
-|---------|--------|------------|-----------|
-| Discovery | running | 5 jobs | 150 |
-| Browsing | running | 23 companies | 89 |
-| Enrichment | running | 45 companies | 67 |
-| Verification | running | 112 contacts | 234 |
+| Expanded View | Shows |
+|--------------|-------|
+| **Uptime** | How long running |
+| **Processed** | Items completed |
+| **Queue** | Items waiting |
+| **Progress Bar** | Live progress with counts |
+| **Source Breakdown** | Bar chart per data source |
+| **Controls** | Start / Stop / Restart buttons |
 
-#### Job Queue
+#### Pipeline Failures Modal
 
-- List of pending and processing jobs
-- Create new jobs directly
-- View job details
+Shows aggregate failures across all stages with drill-down:
+
+| Stage | Counts | Click to |
+|-------|--------|----------|
+| Failed Discovery Jobs | N | Jobs modal (failed filter) |
+| Failed Browsing Companies | N | Companies modal (status=failed) |
+| Failed Enrichments | N | Companies modal (enriched + has_failure) |
+| Failed Contacts (Pipeline) | N | Contacts modal (failed filter) |
+| Failed Contacts (Imported) | N | — |
+| **Total** | Sum | — |
+
+#### Contacts Modal
+
+| Feature | Description |
+|---------|-------------|
+| **Status Filter** | All, Pending, Verified, Failed, No MX, Invalid Syntax |
+| **Provider Filter** | All, Gmail, Outlook, Yahoo, etc. (loaded dynamically) |
+| **Source Filter** | All, Imported, Enriched |
+| **Search** | Search by email, name, job title |
+| **Sort** | Click any column header |
+| **Provider Badges** | Color-coded by provider |
+| **Tags Column** | Comma-separated tags displayed as badges |
+| **Batch Actions** | Verify selected / Delete selected |
 
 #### Live Metrics Chart
 
 Interactive time-series chart with:
 
 - **Time Window Filters**:
-  - `5m` - Last 5 minutes (30-second intervals)
-  - `1h` - Last 1 hour
-  - `24h` - Last 24 hours
+  - `5m` — Last 5 minutes
+  - `1h` — Last 1 hour
+  - `24h` — Last 24 hours
 
 - **Service Selection**:
-  - `Discovery` - Companies found, jobs completed
-  - `Browsing` - Pages browsed, contacts found
-  - `Enrichment` - Emails collected, domains processed
-  - `Verification` - Contacts verified
-  - `All` - Combined view of all services
+  - `Discovery`, `Browsing`, `Enrichment`, `Verification`, `All`
 
-- **Auto-refresh**: Updates every 30 seconds
+- **Real-time updates via WebSocket** (auto-refreshes every 30s)
 
-### Metrics API
+#### WebSocket Real-time Updates
 
-Get metrics programmatically:
-
-```bash
-# Get all services, last 5 minutes
-curl "http://localhost:8000/api/v1/dashboard/metrics?service=all&window=5m"
-
-# Get specific service
-curl "http://localhost:8000/api/v1/dashboard/metrics?service=discovery&window=1h"
-
-# Get 24-hour view
-curl "http://localhost:8000/api/v1/dashboard/metrics?service=enrichment&window=24h"
-```
-
-### Response Format
-
-```json
-{
-  "data": [
-    {
-      "timestamp": "2026-04-19T10:24:41.855545-04:00",
-      "discovery_companies_total": 1519,
-      "discovery_jobs_completed": 56,
-      "browsing_pages_browsed": 154,
-      "enrichment_emails_collected": 1140,
-      "verification_verified_count": 488,
-      "label": "10:24 AM"
-    }
-  ]
-}
-```
-
-### WebSocket Real-time Updates
-
-Connect for live updates:
+The dashboard connects via WebSocket for live data. Falls back to HTTP polling if disconnected.
 
 ```javascript
-// JavaScript example
+// Connect to WebSocket
 const ws = new WebSocket('ws://localhost:8000/api/v1/dashboard/ws');
 
 ws.onmessage = (event) => {
-  const data = JSON.parse(event.data);
-  console.log(data); // { type: 'initial'|'update', data: {...} }
+  const msg = JSON.parse(event.data);
+  if (msg.type === 'initial' || msg.type === 'update') {
+    console.log(msg.data); // Full dashboard stats
+  }
+  if (msg.type === 'verification_progress') {
+    console.log(msg.data); // {processed, verified, failed, total, status}
+  }
 };
 ```
 
@@ -414,38 +381,41 @@ ws.onmessage = (event) => {
 
 ### Check Queue Status
 
-```sql
--- How many companies at each stage
-SELECT status, COUNT(*) FROM companies GROUP BY status;
+```bash
+# How many companies at each stage
+psql -h /var/run/postgresql -U kali -d lead_gen -c "SELECT status, COUNT(*) FROM companies GROUP BY status;"
 
--- How many contacts verified
-SELECT verification_status, COUNT(*) FROM contacts GROUP BY verification_status;
+# How many contacts verified with provider breakdown
+psql -h /var/run/postgresql -U kali -d lead_gen -c "SELECT provider, COUNT(*) FROM contacts WHERE provider IS NOT NULL GROUP BY provider ORDER BY COUNT(*) DESC;"
 
--- How many jobs pending/processing/completed
-SELECT status, COUNT(*) FROM discovery_jobs GROUP BY status;
+# How many jobs pending/processing/completed
+psql -h /var/run/postgresql -U kali -d lead_gen -c "SELECT status, COUNT(*) FROM discovery_jobs GROUP BY status;"
+
+# How many contacts by verification status
+psql -h /var/run/postgresql -U kali -d lead_gen -c "SELECT verification_status, COUNT(*) FROM contacts GROUP BY verification_status ORDER BY COUNT(*) DESC;"
 ```
 
 ### View Specific Data
 
 ```bash
 # View strong leads (score 8-10)
-psql -d leadgen_db -c "SELECT domain, discovery_score FROM companies WHERE discovery_score >= 8 ORDER BY discovery_score DESC;"
+psql -h /var/run/postgresql -U kali -d lead_gen -c "SELECT domain, discovery_score FROM companies WHERE discovery_score >= 8 ORDER BY discovery_score DESC;"
 
 # View companies needing enrichment
-psql -d leadgen_db -c "SELECT domain, status FROM companies WHERE status = 'browsed' ORDER BY discovery_score DESC;"
+psql -h /var/run/postgresql -U kali -d lead_gen -c "SELECT domain, status FROM companies WHERE status = 'browsed' ORDER BY discovery_score DESC;"
 
-# View verified emails
-psql -d leadgen_db -c "SELECT c.domain, ct.email, ct.is_verified FROM contacts ct JOIN companies c ON ct.company_id = c.id WHERE ct.is_verified = true;"
+# View verified Gmail contacts
+psql -h /var/run/postgresql -U kali -d lead_gen -c "SELECT email, provider FROM contacts WHERE provider = 'Gmail' AND is_verified = true LIMIT 20;"
 ```
 
 ### Metrics History
 
 ```bash
 # View recent metrics
-psql -d leadgen_db -c "SELECT recorded_at, service, metric, value FROM service_metrics ORDER BY recorded_at DESC LIMIT 20;"
+psql -h /var/run/postgresql -U kali -d lead_gen -c "SELECT recorded_at, service, metric, value FROM service_metrics ORDER BY recorded_at DESC LIMIT 20;"
 
 # View specific service metrics
-psql -d leadgen_db -c "SELECT recorded_at, metric, value FROM service_metrics WHERE service = 'discovery' ORDER BY recorded_at DESC LIMIT 10;"
+psql -h /var/run/postgresql -U kali -d lead_gen -c "SELECT recorded_at, metric, value FROM service_metrics WHERE service = 'discovery' ORDER BY recorded_at DESC LIMIT 10;"
 ```
 
 ---
@@ -458,30 +428,20 @@ Each service can be configured via environment variables or `.env` files:
 
 | Service | Key Settings |
 |---------|--------------|
-| Discovery | `DISCOVERY_POLL_INTERVAL`, `MAX_JOB_RETRIES`, `SEARCH_CACHE_HOURS` |
-| Browsing | `BROWSING_TIMEOUT_DOMAIN`, `SCORE_MAX`, `BROWSING_WATCHDOG_MINUTES` |
-| Enrichment | `TARGET_EMAILS_PER_DOMAIN`, `ENRICHMENT_TIMEOUT_DOMAIN`, `MAX_CONCURRENT_CONTAINERS` |
-| Verification | `SMTP_TIMEOUT`, `VERIFIER_POLL_INTERVAL` |
-| Celery | `REDIS_URL`, task routes, concurrency settings |
+| Discovery | `DISCOVERY_POLL_INTERVAL=300`, `MAX_JOB_RETRIES=3`, `GROQ_QUERY_COUNT=50` |
+| Browsing | `BROWSING_TIMEOUT_DOMAIN=45`, `BROWSING_WORKERS=5`, `MAX_RETRIES=3` |
+| Enrichment | `ENRICHMENT_TIMEOUT_DOMAIN=120`, `ENRICHMENT_TIMEOUT_DOCKER=120`, `MAX_CONCURRENT_CONTAINERS=5` |
+| Verification | `VERIFIER_POLL_INTERVAL=30` |
+| API | `API_HOST=127.0.0.1`, `API_PORT=8000` |
 
 ### Environment Variables
 
-Create `.env` files in each service directory:
-
-```bash
-# Example: 01_discovery/.env
-DATABASE_URL=postgresql://leadgen_user:leadgen_pass@localhost/leadgen_db
-DISCOVERY_POLL_INTERVAL=300
-MAX_JOB_RETRIES=3
-```
-
-```bash
-# Example: 04_api/.env
-DATABASE_URL=postgresql://leadgen_user:leadgen_pass@localhost/leadgen_db
-REDIS_URL=redis://localhost:6379/0
-API_HOST=0.0.0.0
-API_PORT=8000
-```
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DATABASE_URL` | (required) | PostgreSQL connection string |
+| `API_BASE` | `http://localhost:8000/api/v1` | Internal API URL for service progress POSTs |
+| `GROQ_API_KEY` | (required for discovery/enrichment) | LLM API key for query generation |
+| `SEARXNG_URL` | `http://localhost:8080` | SearXNG meta search instance |
 
 ### TLD and City Scoring
 
@@ -502,21 +462,23 @@ To modify scoring:
 lsof -i :8000
 
 # Check Python environment
-source .venv/bin/activate
-python -c "import sqlalchemy; print('OK')"
+cd 04_api && PYTHONPATH=/home/kali/lead_gen ./venv/bin/python -c "from database import init_db; print('DB OK')"
 
-# Check Redis
-redis-cli ping
+# Check PostgreSQL
+psql -h /var/run/postgresql -U kali -d lead_gen -c "SELECT 1;"
 ```
 
 ### No Companies Being Processed
 
 ```bash
 # Check if there are companies with score >= 2
-psql -d leadgen_db -c "SELECT COUNT(*) FROM companies WHERE status = 'discovered' AND discovery_score >= 2;"
+psql -h /var/run/postgresql -U kali -d lead_gen -c "SELECT COUNT(*) FROM companies WHERE status = 'discovered' AND discovery_score >= 2;"
 
 # Check if job completed
-psql -d leadgen_db -c "SELECT status, results_count FROM discovery_jobs ORDER BY id DESC LIMIT 1;"
+psql -h /var/run/postgresql -U kali -d lead_gen -c "SELECT status, results_count FROM discovery_jobs ORDER BY id DESC LIMIT 1;"
+
+# Check if discovery service is running
+curl http://localhost:8000/api/v1/services/status
 ```
 
 ### Enrichment Not Finding Emails
@@ -525,55 +487,55 @@ psql -d leadgen_db -c "SELECT status, results_count FROM discovery_jobs ORDER BY
 # Check Docker is running
 docker ps
 
-# Check for Docker permission
-docker run hello-world
+# Check enrichment logs for timeout issues
+tail -f /var/log/lead_gen/enrichment.log
 ```
 
-### Celery Worker Not Processing Tasks
-
-```bash
-# Check worker is running
-ps aux | grep celery | grep worker
-
-# Check queues for pending tasks
-redis-cli LLEN discovery
-redis-cli LLEN default
-
-# Check worker logs
-tail -f /tmp/celery_worker.log
-```
-
-### Metrics Not Updating
-
-```bash
-# Check Celery Beat is running
-ps aux | grep celery | grep beat
-
-# Check beat logs
-tail -f /tmp/celerybeat.log
-
-# Verify metrics in database
-psql -d leadgen_db -c "SELECT recorded_at, service, metric, value FROM service_metrics ORDER BY recorded_at DESC LIMIT 10;"
-```
+Common cause: theHarvester Docker container takes 60-120s per company. The per-source timeout was set to 120s to accommodate this. If you see "harvester exceeded 120s" in logs, the domain genuinely takes too long.
 
 ### Dashboard Shows No Data
 
-1. Ensure Celery Beat is running
-2. Wait up to 30 seconds for first data point
-3. Check browser console for errors
-4. Verify API returns data:
+1. Ensure the API is running: `curl http://localhost:8000/health`
+2. Open http://localhost:8000/dashboard
+3. Check browser console for WebSocket errors
+4. Verify stats endpoint returns data:
 ```bash
-curl "http://localhost:8000/api/v1/dashboard/metrics?service=all&window=5m"
+curl http://localhost:8000/api/v1/dashboard/stats
+```
+
+### Sorter Shows 0 Classified Contacts
+
+If all contacts show as "Unknown" provider:
+
+1. The verifier auto-classifies during verification — ensure it's running
+2. Check the verifier log for progress:
+```bash
+tail -f /var/log/lead_gen/verification.log | grep "provider\|classified"
+```
+
+### Provider Not Showing in Contacts Modal
+
+The provider filter dropdown loads dynamically from the API on modal open. If empty:
+
+```bash
+# Check if any contacts have provider set
+psql -h /var/run/postgresql -U kali -d lead_gen -c "SELECT provider, COUNT(*) FROM contacts WHERE provider IS NOT NULL AND provider != '' GROUP BY provider;"
+
+# If empty, run resolve-mx to classify existing contacts
+curl -X POST http://localhost:8000/api/v1/sorter/resolve-mx
 ```
 
 ### Database Connection Issues
 
 ```bash
-# Test connection
-psql -d leadgen_db -c "SELECT 1;"
+# Connect via Unix socket (peer auth)
+psql -h /var/run/postgresql -U kali -d lead_gen -c "SELECT 1;"
 
-# Check database URL in .env files
-cat 01_discovery/.env | grep DATABASE
+# Reset password if needed
+psql -h /var/run/postgresql -U kali -d lead_gen -c "ALTER USER kali WITH PASSWORD 'yourpassword';"
+
+# Test API database connection
+curl http://localhost:8000/api/v1/discovery-jobs/_test-db
 ```
 
 ---
@@ -586,45 +548,129 @@ cat 01_discovery/.env | grep DATABASE
 http://localhost:8000
 ```
 
-### Endpoints
-
-#### Jobs
+### Jobs
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/v1/jobs` | List all jobs |
-| POST | `/api/v1/jobs` | Create new job |
-| GET | `/api/v1/jobs/{id}` | Get job details |
+| GET | `/api/v1/discovery-jobs` | List jobs (filterable, sortable) |
+| POST | `/api/v1/discovery-jobs` | Create new job |
+| POST | `/api/v1/discovery-jobs/bulk` | Bulk create jobs |
+| GET | `/api/v1/discovery-jobs/queue` | Get pending job queue |
+| PATCH | `/api/v1/discovery-jobs/{id}` | Update job (retry) |
+| DELETE | `/api/v1/discovery-jobs/pending/clear` | Clear pending jobs |
+| DELETE | `/api/v1/discovery-jobs/failed/clear` | Clear failed jobs |
 
-#### Companies
+### Templates
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/v1/discovery-jobs/templates` | List templates |
+| POST | `/api/v1/discovery-jobs/templates` | Create template |
+| DELETE | `/api/v1/discovery-jobs/templates/{id}` | Delete template |
+| POST | `/api/v1/discovery-jobs/templates/{id}/use` | Create job from template |
+
+### Companies
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/v1/companies` | List companies |
 | GET | `/api/v1/companies/{id}` | Get company details |
+| POST | `/api/v1/companies/batch/requeue` | Batch requeue |
+| POST | `/api/v1/companies/batch/delete` | Batch delete |
 
-#### Contacts
+**Query parameters for `GET /companies`:**
+- `status` — filter by status
+- `has_failure` — `true` to show enrichment failures
+- `lead_source` — filter by source
+- `search` — search domain/industry/name
+- `sort_by` / `sort_order` — sort column and direction
+- `page` / `limit` — pagination
+
+### Contacts
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/v1/contacts` | List contacts |
 | GET | `/api/v1/contacts/{id}` | Get contact details |
+| POST | `/api/v1/contacts/import` | Import contacts (txt/csv) |
+| POST | `/api/v1/contacts/batch/verify` | Verify selected contacts |
+| POST | `/api/v1/contacts/batch/delete` | Batch delete |
 
-#### Services
+**Query parameters for `GET /contacts`:**
+- `verification_status` — filter by status (comma-separated)
+- `source` — `imported` or `enriched`
+- `provider` — `Gmail`, `Outlook`, `Yahoo`, etc.
+- `is_verified` — `true`/`false`
+- `search` — search email/name/title
+- `sort_by` / `sort_order` — sort column
+- `page` / `limit` — pagination
+
+### Services (Process Manager)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/v1/services/status` | Get all service statuses |
-| POST | `/api/v1/services/{service}/start` | Start a service |
-| POST | `/api/v1/services/{service}/stop` | Stop a service |
+| GET | `/api/v1/services/health` | Pipeline health summary |
+| GET | `/api/v1/services/logs` | Pipeline logs |
+| GET | `/api/v1/services/{name}/logs` | Service-specific logs |
+| POST | `/api/v1/services/{name}/start` | Start a service |
+| POST | `/api/v1/services/{name}/stop` | Stop a service |
+| POST | `/api/v1/services/{name}/restart` | Restart a service |
+| GET | `/api/v1/services/mode` | Get control mode |
+| POST | `/api/v1/services/mode` | Set control mode |
 
-#### Dashboard
+### Dashboard
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/v1/dashboard/stats` | Get pipeline statistics |
-| GET | `/api/v1/dashboard/metrics` | Get time-series metrics |
-| WS | `/api/v1/dashboard/ws` | WebSocket for real-time |
+| GET | `/api/v1/dashboard/stats` | Full pipeline statistics + failure breakdown |
+| GET | `/api/v1/dashboard/metrics` | Time-series metrics per service |
+| POST | `/api/v1/dashboard/metrics` | Write a metric (internal) |
+| WS | `/api/v1/dashboard/ws` | WebSocket real-time updates |
+| POST | `/api/v1/dashboard/verification-progress` | Verifier progress (internal) |
+| POST | `/api/v1/dashboard/enrichment-progress` | Enrichment progress (internal) |
+| POST | `/api/v1/dashboard/browsing-progress` | Browsing progress (internal) |
+| POST | `/api/v1/dashboard/discovery-progress` | Discovery progress (internal) |
+| POST | `/api/v1/dashboard/source-status` | Per-source metrics (internal) |
+
+### Sorter (Sky Email Sorter)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/v1/sorter/stats` | Processing counts (unresolved, failed, duplicates) |
+| GET | `/api/v1/sorter/provider-breakdown` | Count per provider with verification stats |
+| GET | `/api/v1/sorter/providers` | List distinct providers |
+| GET | `/api/v1/sorter/domains` | List MX domains with counts |
+| GET | `/api/v1/sorter/contacts/{provider}` | Contacts for a specific provider |
+| POST | `/api/v1/sorter/process` | Classify contacts with MX but no provider |
+| POST | `/api/v1/sorter/resolve-mx` | DNS MX lookup + classify in one call |
+| POST | `/api/v1/sorter/dedup` | Remove duplicate emails |
+| GET | `/api/v1/sorter/export` | Download per-provider TXT files as ZIP |
+| POST | `/api/v1/sorter/tags` | Bulk tag contacts |
+| POST | `/api/v1/sorter/lists` | Save current selection as a list |
+| GET | `/api/v1/sorter/lists` | List saved email lists |
+| GET | `/api/v1/sorter/lists/{id}/export` | Export a saved list |
+| DELETE | `/api/v1/sorter/lists/{id}` | Delete a saved list |
+
+### Export
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/v1/export/emails` | Export emails (csv/txt) |
+| GET | `/api/v1/export/emails/preview` | Preview export |
+| GET | `/api/v1/export/emails/jobs` | Recent export jobs |
+
+### Search
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/v1/search/domains` | Search domains by keyword/region |
+
+### Verification
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/v1/verification/verify-single` | Verify a single email |
 
 ### Metrics Parameters
 
@@ -638,18 +684,27 @@ http://localhost:8000
 
 ```bash
 # Create a job
-curl -X POST http://localhost:8000/api/v1/jobs \
+curl -X POST http://localhost:8000/api/v1/discovery-jobs \
   -H "Content-Type: application/json" \
   -d '{"keyword": "marketing agency", "region": "usa"}'
 
-# List companies
+# List companies with status
 curl http://localhost:8000/api/v1/companies?status=browsed&limit=10
+
+# List contacts by provider
+curl "http://localhost:8000/api/v1/contacts?provider=Gmail&limit=10"
 
 # Get dashboard stats
 curl http://localhost:8000/api/v1/dashboard/stats
 
 # Get metrics
 curl "http://localhost:8000/api/v1/dashboard/metrics?service=all&window=5m"
+
+# Get sorter provider breakdown
+curl http://localhost:8000/api/v1/sorter/provider-breakdown
+
+# Export per-provider TXT files
+curl http://localhost:8000/api/v1/sorter/export -o emails_by_provider.zip
 
 # Check API health
 curl http://localhost:8000/health
@@ -661,7 +716,7 @@ curl http://localhost:8000/health
 
 For issues or questions, check:
 
-1. Service logs in terminal output
-2. Database status queries above
-3. Celery worker/beat logs in `/tmp/`
-4. PostgreSQL logs (`/var/log/postgresql/`)
+1. Service logs: `/var/log/lead_gen/*.log`
+2. API logs: `/var/log/lead_gen/api.log`
+3. Database status queries above
+4. PostgreSQL logs: `tail -f /var/log/postgresql/postgresql-*.log`

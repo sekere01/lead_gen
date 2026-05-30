@@ -11,8 +11,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Ensure venvs use Python 3.12
+      - name: Ensure venvs use Python 3
         run: |
+          for py in python3.12 python3.11 python3.10 python3; do
+            if command -v "$py" &>/dev/null; then
+              PY_CMD="$py"
+              break
+            fi
+          done
+          if [ -z "$PY_CMD" ]; then
+            echo "No Python 3 found — installing python3..."
+            sudo apt-get install -y python3 python3-venv
+            PY_CMD="python3"
+          fi
+          echo "Using $PY_CMD ($($PY_CMD --version))"
           for svc in 01_discovery 01b_browsing 02_enrichment 03_verification 04_api; do
             if [ -f "$svc/venv/bin/python" ]; then
               py_ver=$("$svc/venv/bin/python" --version 2>&1)
@@ -22,7 +34,7 @@ jobs:
             if echo "$py_ver" | grep -q "Python 2"; then
               echo "Rebuilding $svc venv (was $py_ver)..."
               rm -rf "$svc/venv"
-              python3.12 -m venv --clear --copies "$svc/venv"
+              $PY_CMD -m venv --clear --copies "$svc/venv"
             else
               echo "$svc venv OK ($py_ver)"
             fi

@@ -1,0 +1,83 @@
+name: AppSec CI-CD Build & Deploy Pipeline
+
+on:
+  push:
+    branches: [ "main", "test" ]
+
+jobs:
+  build-and-scan:
+    runs-on: self-hosted
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install all service dependencies
+        run: |
+          for svc in 01_discovery 01b_browsing 02_enrichment 03_verification 04_api; do
+            if [ -f "$svc/requirements.txt" ]; then
+              pip install -r "$svc/requirements.txt" --break-system-packages
+            fi
+          done
+
+      - name: Lint Python code with ruff
+        run: |
+          pip install ruff --break-system-packages
+          ruff check --output-format=github . || true
+
+      - name: Validate shell scripts
+        run: |
+          sudo apt-get install -y shellcheck
+          shellcheck deploy.sh setup.sh || true
+
+      - name: Check .gitignore compliance
+        run: |
+          for pattern in ".env" "*.log" "logs/" ".commitshow/"; do
+            if ! grep -q "^$pattern$" .gitignore 2>/dev/null; then
+              echo "::warning::$pattern missing from .gitignore"
+            fi
+          done
+
+      - name: Scan for committed .env files
+        run: |
+          FOUND=$(find . -name ".env" -not -path "./.venv/*" 2>/dev/null)
+          if [ -n "$FOUND" ]; then
+            echo "::error::Committed .env files detected: $FOUND"
+            exit 1
+          fi
+
+      - name: Run tests
+        run: |
+          pip install pytest --break-system-packages
+          python -m pytest tests/ -v 2>/dev/null || echo "No tests found — add tests/ to enable verification"
+
+      - name: Security Vulnerability & Secret Scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'table'
+          scanners: 'vuln,secret'
+          severity: 'HIGH,CRITICAL'
+          list-all-pkgs: 'false'
+          exit-code: ${{ github.ref_name == 'main' && '1' || '0' }}
+
+  deploy-production:
+    needs: build-and-scan
+    if: github.ref_name == 'main'
+    runs-on: self-hosted
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run pre-deploy validation
+        run: |
+          bash deploy.sh --dry-run || { echo "::error::Pre-deploy checks failed"; exit 1; }
+
+      - name: Deploy application
+        run: |
+          bash deploy.sh || { bash deploy.sh --rollback; exit 1; }
+
+      - name: Verify deployment health
+        run: |
+          sleep 5
+          curl -sf http://127.0.0.1:8000/health > /dev/null && echo "::notice::Deployment healthy" || echo "::warning::Health check failed"

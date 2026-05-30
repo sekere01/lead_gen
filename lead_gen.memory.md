@@ -1226,3 +1226,74 @@ Verifier (03_verification/main.py)
 | 6 | `pscale` CLI | Installed v0.284.0 from GitHub releases to `~/.npm-global/bin/` (Linux x86_64 tarball) |
 | 7 | `planetscale/database-skills` | Installed 4 skills (mysql, postgres, neki, vitess) to `~/lead_gen/.agents/skills/` |
 | 8 | `unicodeveloper/shannon` | Installed 1 skill (`shannon`) — autonomous AI pentester for web apps and APIs. Med Risk flagged. |
+
+## Session Log — 2026-05-29
+
+### Sky Email Sorter Integration
+
+#### New Files Created
+| File | Purpose |
+|------|---------|
+| `04_api/services/sorter_service.py` | Provider map (13 rules), MX resolver, `bulk_resolve_mx()`, `classify_provider()` |
+| `04_api/api/v1/endpoints/sorter.py` | 10 sorter endpoints (stats, process, resolve, dedup, export, lists, tags) |
+| `shared_models/email_list.py` | EmailList model for saved sorted lists |
+
+#### Database Changes
+- Added `mx_domain`, `provider`, `tags` columns to `contacts` table
+- Added `email_lists` table with JSONB `provider_breakdown`
+- Added indexes on `contacts(mx_domain)`, `contacts(provider)`
+
+#### Bug Fixes Applied
+
+| Fix | Files | Detail |
+|-----|-------|--------|
+| **Per-source timeout (enrichment)** | `02_enrichment/main.py` | Replaced global `DOMAIN_TIMEOUT` with per-source `source_start` tracking. Each source gets its own 120s budget. |
+| **Thread safety (browsing)** | `01b_browsing/services/browser.py`, `main.py` | Removed module-level `_last_sources_used` global (race condition in ThreadPoolExecutor). Each thread creates its own `sources_used` dict passed through call chain. |
+| **Async event loop (enrichment)** | `02_enrichment/main.py` | Moved `httpx.AsyncClient` creation inside `asyncio.run()` in `extract_emails_from_pages()` and `extract_emails_from_sitemap()`. Removed module-level `_fetch_semaphore`. |
+| **CommonCrawl CDX wildcard** | `01_discovery/services/commoncrawl.py:172` | Changed `%{kw}%` → `*{kw}*` (CDX API uses `*` not `%`). |
+| **SearXNG config** | `01_discovery/.env` | Fixed `SEARXNG_URL=` (was empty, overrode default `http://localhost:8080`). |
+| **Verifier failure recording** | `03_verification/main.py` | Exception handler now writes `verification_status='failed'` to DB. Added `'failed'` to verifier's query so failed contacts get retried. |
+
+#### Sorter API Endpoints
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/v1/sorter/stats` | Total/unresolved/unclassified/failed/duplicates counts |
+| `GET` | `/api/v1/sorter/provider-breakdown` | Count per provider (Gmail/Outlook/Yahoo/Other) |
+| `GET` | `/api/v1/sorter/providers` | List distinct providers |
+| `GET` | `/api/v1/sorter/domains` | MX domain tiles with counts |
+| `GET` | `/api/v1/sorter/contacts/{provider}` | Contacts by provider |
+| `POST` | `/api/v1/sorter/process` | Classify contacts with mx_domain but no provider |
+| `POST` | `/api/v1/sorter/resolve-mx` | DNS MX lookup + classify in one step |
+| `POST` | `/api/v1/sorter/dedup` | Remove duplicate emails |
+| `GET` | `/api/v1/sorter/export` | Per-provider TXT ZIP download |
+| `POST` | `/api/v1/sorter/tags` | Bulk tag contacts |
+| `POST` | `/api/v1/sorter/lists` | Save a list |
+| `GET` | `/api/v1/sorter/lists` | List saved lists |
+| `GET` | `/api/v1/sorter/lists/{id}/export` | Export saved list as ZIP |
+| `DELETE` | `/api/v1/sorter/lists/{id}` | Delete list |
+
+#### Pipeline Failure Tracking
+- Added `failed_companies`, `failed_enrichments`, `failed_contacts`, `failed_imported_contacts`, `failed_total` to dashboard metrics
+- New "Failed" stat card showing aggregate across all pipeline stages
+- Pipeline Failures modal with per-stage breakdown (jobs, browsing, enrichment, contacts)
+- All rows clickable — open filtered modals
+- Added `has_failure` query param to `GET /api/v1/companies`
+
+#### Dashboard Enhancements
+- Live progress widgets for all 4 pipeline nodes (discovery, browsing, enrichment, verification)
+- Sorter panel with auto-refresh via WebSocket
+- Provider filter + column in contacts modal
+- MX domain tiles (flex-wrap pills)
+- Saved lists with save/export/delete
+- Verifier running/stopped status indicator
+- sorter panel stats cards auto-refresh via WebSocket `verification_progress` events
+
+#### Auto-Classification Pipeline
+- `utils/email_utils.py`: Added `PROVIDER_MAP` + `classify_provider()` (single source of truth)
+- Verifier now auto-stores `provider` during verification via `classify_provider(mx_domain)`
+- `resolve-mx` endpoint sets both `mx_domain` + `provider` in one step
+- Removed dead Process/Resolve/Dedup buttons from sorter panel
+
+#### Config Changes
+- `02_enrichment/config.py`: `ENRICHMENT_TIMEOUT_DOMAIN` 60s → 120s
+- `01_discovery/.env`: Fixed empty `SEARXNG_URL`

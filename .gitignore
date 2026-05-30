@@ -62,6 +62,7 @@ htmlcov/
 .claude/
 .remember/
 .kilo/
+.opencode
 
 # Project Memory
 *.memory.md
@@ -72,3 +73,8 @@ nginx_config_updated.conf
 
 # Scripts output
 pipeline.log
+
+PRODUCTION_AUDIT.md
+actions-runner/
+ngrok-v3-stable-linux-amd64.tgz
+lead_gen.memory.md

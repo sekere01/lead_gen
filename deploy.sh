@@ -249,7 +249,7 @@ echo "[1/6] Backing up and updating code..."
 backup_code
 
 cd "$PROJECT_DIR"
-git pull origin test 2>/dev/null || git pull 2>/dev/null || echo "    Git pull skipped (not on test branch)"
+git pull origin main 2>/dev/null || git pull 2>/dev/null || echo "    Git pull skipped (not on main branch)"
 
 echo "    Code updated."
 

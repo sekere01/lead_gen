@@ -335,7 +335,7 @@ else
     if [ -d "$PROJECT_DIR/.git" ]; then
         echo "    Repository already exists, pulling latest..."
         cd "$PROJECT_DIR"
-        sudo -u $DEPLOY_USER git pull origin test 2>/dev/null || sudo -u $DEPLOY_USER git pull 2>/dev/null || echo "    Pull skipped (not on test branch)"
+        sudo -u $DEPLOY_USER git pull origin main 2>/dev/null || sudo -u $DEPLOY_USER git pull 2>/dev/null || echo "    Pull skipped (not on main branch)"
     else
         echo "    Repository will be cloned during deploy (interactive step)"
     fi

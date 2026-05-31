@@ -10,9 +10,10 @@
 6. [Email Classification (Sky Email Sorter)](#email-classification-sky-email-sorter)
 7. [Dashboard & Metrics](#dashboard--metrics)
 8. [Monitoring Progress](#monitoring-progress)
-9. [Configuration](#configuration)
-10. [Troubleshooting](#troubleshooting)
-11. [API Reference](#api-reference)
+9. [CI/CD Pipeline](#cicd-pipeline)
+10. [Configuration](#configuration)
+11. [Troubleshooting](#troubleshooting)
+12. [API Reference](#api-reference)
 
 ---
 
@@ -417,6 +418,59 @@ psql -h /var/run/postgresql -U kali -d lead_gen -c "SELECT recorded_at, service,
 # View specific service metrics
 psql -h /var/run/postgresql -U kali -d lead_gen -c "SELECT recorded_at, metric, value FROM service_metrics WHERE service = 'discovery' ORDER BY recorded_at DESC LIMIT 10;"
 ```
+
+---
+
+## CI/CD Pipeline
+
+This project uses **GitHub Actions** with a **self-hosted runner** for automated build, security scanning, and deployment.
+
+### Workflow File
+
+`.github/workflows/pipeline.yml`
+
+### What Runs on Every Push (test + main branches)
+
+| Step | Tool | Purpose |
+|------|------|---------|
+| Venv check | Custom script | Ensures all 5 venvs use Python 3 (rebuilds Python 2 venvs) |
+| Dependency install | `pip install` | Installs all requirements |
+| Python CVE audit | `pip-audit` | Scans requirements.txt for known vulnerabilities |
+| Python lint | `ruff` | Code quality and style checks |
+| Shell lint | `shellcheck` | Validates `deploy.sh` and `setup.sh` |
+| .gitignore check | Custom script | Warns if `.env`, `*.log`, `logs/` patterns missing |
+| .env detection | `find` | **Blocks** if any `.env` file is tracked in git |
+| Tests | `pytest` | Runs test suite (warns if none found) |
+| Vuln + secret scan | **Trivy** | Filesystem scan for HIGH/CRITICAL vulnerabilities and secrets |
+
+### Deploy Gate
+
+- **`test` branch** — scan only, no deployment
+- **`main` branch** — scan + deploy (blocks on HIGH/CRITICAL)
+
+### Deploy Sequence (main only)
+
+1. `bash deploy.sh --dry-run` — 10 pre-flight checks (venvs, deps, PostgreSQL, Redis, Docker, Nginx, dashboard)
+2. `bash deploy.sh` — backup code → git pull → install deps → reload systemd → restart services
+3. `curl http://127.0.0.1:8000/health` — verify dashboard responds
+
+On failure, auto-rolls back to the previous backup.
+
+### SOP: Daily Workflow
+
+```bash
+# 1. Develop on test
+git checkout test
+# ... make changes ...
+git push origin test    # scans only, no deploy
+
+# 2. Ship to production
+git checkout main
+git merge test
+git push origin main    # scans + deploys automatically
+```
+
+See [CI/CD-Pipeline.md](../CI/CD-Pipeline.md) for full documentation including runner setup, security guardrails, and deploy script reference.
 
 ---
 

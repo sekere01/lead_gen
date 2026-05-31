@@ -36,6 +36,10 @@ A multi-service lead generation pipeline that discovers companies, browses their
 | **Sorter** | `04_api/services/sorter_service.py` | MX-based email classification, dedup, export |
 | **API** | `04_api/` | REST API + WebSocket + dashboard |
 
+## CI/CD Pipeline
+
+This project uses GitHub Actions with a self-hosted runner for automated AppSec scanning and deployment. See [CI/CD-Pipeline.md](CI/CD-Pipeline.md) for full documentation.
+
 ## Status Flow
 
 ```

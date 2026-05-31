@@ -164,8 +164,8 @@ def run_verifier():
     # Use ThreadPoolExecutor for concurrent processing
     with ThreadPoolExecutor(max_workers=10) as executor:
         while True:
-            db = SessionLocal()
             try:
+                db = SessionLocal()
                 pending_query = db.query(Contact).filter(
                     or_(
                         Contact.verification_status == 'pending',
@@ -310,5 +310,14 @@ if __name__ == "__main__":
     print("=" * 50)
     print("Verification Service Starting...")
     print("=" * 50)
-    init_db()
+    for attempt in range(1, 6):
+        try:
+            init_db()
+            break
+        except Exception as e:
+            logger.critical(f"Database init failed (attempt {attempt}/5): {e}")
+            if attempt < 5:
+                time.sleep(5 * attempt)
+            else:
+                raise
     run_verifier()

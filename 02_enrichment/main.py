@@ -889,8 +889,8 @@ def run_enricher():
     max_failures_before_wait = 3
     
     while True:
-        db = SessionLocal()
         try:
+            db = SessionLocal()
             if not check_docker_health():
                 consecutive_failures += 1
                 logger.warning(f"Docker not healthy. Failures: {consecutive_failures}")
@@ -989,5 +989,14 @@ if __name__ == "__main__":
     print("=" * 50)
     print("Enrichment Service Starting...")
     print("=" * 50)
-    init_db()
+    for attempt in range(1, 6):
+        try:
+            init_db()
+            break
+        except Exception as e:
+            logger.critical(f"Database init failed (attempt {attempt}/5): {e}")
+            if attempt < 5:
+                time.sleep(5 * attempt)
+            else:
+                raise
     run_enricher()

@@ -380,8 +380,8 @@ def run_discoverer():
     metrics_counter = 0
     
     while True:
-        db = SessionLocal()
         try:
+            db = SessionLocal()
             # Check for config file changes and reload if needed
             maybe_reload_config()
             
@@ -439,5 +439,14 @@ if __name__ == "__main__":
     print("=" * 50)
     print(f"Loaded config: {get_config_summary()}")
     print("=" * 50)
-    init_db()
+    for attempt in range(1, 6):
+        try:
+            init_db()
+            break
+        except Exception as e:
+            logger.critical(f"Database init failed (attempt {attempt}/5): {e}")
+            if attempt < 5:
+                time.sleep(5 * attempt)
+            else:
+                raise
     run_discoverer()

@@ -303,7 +303,7 @@ echo ""
 
 for svc in discovery browsing enrichment verification api; do
     echo "--- leadgen-$svc ---"
-    sudo systemctl status leadgen-$svc --no-pager 2>/dev/null || echo "    Service not running"
+    sudo systemctl status leadgen-$svc --no-pager --timeout=5 2>/dev/null || echo "    Service not running"
     echo ""
 done
 

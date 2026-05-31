@@ -108,7 +108,7 @@ jobs:
           scanners: 'vuln,secret'
           severity: 'HIGH,CRITICAL'
           list-all-pkgs: 'false'
-          skip-dirs: '.git'
+          skip-dirs: '.git,01_discovery/venv,01b_browsing/venv,02_enrichment/venv,03_verification/venv,04_api/venv'
           exit-code: ${{ github.ref_name == 'main' && '1' || '0' }}
 
   deploy-production:

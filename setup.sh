@@ -494,6 +494,7 @@ else
 [Unit]
 Description=Lead Gen ${svc_name^} Service
 After=network.target postgresql.service
+Requires=postgresql.service
 
 [Service]
 Type=simple
@@ -505,6 +506,8 @@ Environment="LOG_DIR=$LOG_DIR"
 ExecStart=$PROJECT_DIR/$svc_dir/venv/bin/python main.py
 Restart=always
 RestartSec=10
+StartLimitBurst=5
+StartLimitIntervalSec=120
 
 [Install]
 WantedBy=multi-user.target
@@ -516,6 +519,7 @@ EOF
 [Unit]
 Description=Lead Gen API Service
 After=network.target postgresql.service
+Requires=postgresql.service
 
 [Service]
 Type=simple
@@ -527,6 +531,8 @@ Environment="LOG_DIR=$LOG_DIR"
 ExecStart=$PROJECT_DIR/04_api/venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port 8000
 Restart=always
 RestartSec=10
+StartLimitBurst=5
+StartLimitIntervalSec=120
 
 [Install]
 WantedBy=multi-user.target

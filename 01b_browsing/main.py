@@ -352,8 +352,8 @@ def run_browser():
     metrics_counter = 0
     
     while True:
-        db = SessionLocal()
         try:
+            db = SessionLocal()
             watchdog_reset_stuck_companies(db)
             _cleanup_zombie_browsers()
             
@@ -436,9 +436,14 @@ if __name__ == "__main__":
     print("=" * 50)
     print("Browsing Service Starting...")
     print("=" * 50)
-    try:
-        init_db()
-    except Exception as e:
-        logger.critical(f"Database initialization failed: {e}")
-        raise
+    for attempt in range(1, 6):
+        try:
+            init_db()
+            break
+        except Exception as e:
+            logger.critical(f"Database init failed (attempt {attempt}/5): {e}")
+            if attempt < 5:
+                time.sleep(5 * attempt)
+            else:
+                raise
     run_browser()

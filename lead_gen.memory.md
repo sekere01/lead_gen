@@ -33,6 +33,7 @@
 - [x] Added write_metrics() to browsing, enrichment, verification services
 - [x] Installed httpx in verification venv
 - [x] process_manager PATH fix - always set standard dirs
+- [x] CI/CD pipeline documentation written — `CI/CD-Pipeline.md` with corrected workflow, full lint/scan steps, deploy sequence
 
 ## Architecture
 - Services and how they connect: 5 microservices (Discovery, Browsing, Enrichment, Verification, API) communicating via PostgreSQL database and Redis/Celery
@@ -1297,3 +1298,17 @@ Verifier (03_verification/main.py)
 #### Config Changes
 - `02_enrichment/config.py`: `ENRICHMENT_TIMEOUT_DOMAIN` 60s → 120s
 - `01_discovery/.env`: Fixed empty `SEARXNG_URL`
+
+### 2026-05-30: CI/CD Pipeline Documentation
+- Reviewed actual `.github/workflows/pipeline.yml` against user-drafted CI/CD doc
+- Found 10 discrepancies: wrong filename (`ci-cd.yml` vs `pipeline.yml`), missing `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24`, missing pip-audit/ruff/shellcheck/.gitignore-check/.env-detection/pytest steps, missing pre-deploy dry-run and health verification, incorrect `yes |` deploy command, wrong workflow name
+- Created `CI/CD-Pipeline.md` (300 lines) — corrected documentation with accurate workflow, security guardrails table, SOP, deploy.sh reference
+- Updated `README.md` with CI/CD section linking to new doc
+
+**Files created/modified:**
+| File | Action | Lines |
+|------|--------|-------|
+| `CI/CD-Pipeline.md` | Created | 300 |
+| `README.md` | Edited (+4 lines) | Inserted CI/CD section after Pipeline table |
+
+**Commit:** `073f0a7` on `test` — "docs: add CI/CD-Pipeline.md with corrected workflow docs, update README link"

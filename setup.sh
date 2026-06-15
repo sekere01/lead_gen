@@ -323,30 +323,9 @@ EOF
 fi
 
 # =============================================================================
-# 6. Git clone or pull
+# 6. Interactive configuration
 # =============================================================================
-echo "[6/15] Setting up project directory..."
-
-if [ "$DRY_RUN" = true ]; then
-    echo "    Would clone repository to $PROJECT_DIR"
-else
-    mkdir -p "$PROJECT_DIR"
-
-    if [ -d "$PROJECT_DIR/.git" ]; then
-        echo "    Repository already exists, pulling latest..."
-        cd "$PROJECT_DIR"
-        sudo -u $DEPLOY_USER git pull origin main 2>/dev/null || sudo -u $DEPLOY_USER git pull 2>/dev/null || echo "    Pull skipped (not on main branch)"
-    else
-        echo "    Repository will be cloned during deploy (interactive step)"
-    fi
-
-    chown -R $DEPLOY_USER:$DEPLOY_USER "$PROJECT_DIR"
-fi
-
-# =============================================================================
-# 7. Interactive configuration
-# =============================================================================
-echo "[7/15] Configuration..."
+echo "[6/15] Configuration..."
 
 read -p "GROQ API Key: " GROQ_API_KEY
 [ -z "$GROQ_API_KEY" ] && echo "ERROR: GROQ_API_KEY is required." && exit 1
@@ -354,10 +333,29 @@ read -p "GROQ API Key: " GROQ_API_KEY
 read -p "GROQ Model [llama-3.1-8b-instant]: " GROQ_MODEL
 GROQ_MODEL=${GROQ_MODEL:-llama-3.1-8b-instant}
 
+read -p "GitHub Repo URL: " REPO_URL
+[ -z "$REPO_URL" ] && echo "ERROR: GitHub Repo URL is required." && exit 1
+
+read -p "Git Branch [main]: " REPO_BRANCH
+REPO_BRANCH=${REPO_BRANCH:-main}
+
 read -p "SearXNG URL [http://localhost:$SEARXNG_PORT]: " SEARXNG_URL
 SEARXNG_URL=${SEARXNG_URL:-http://localhost:$SEARXNG_PORT}
 
 echo "    Configuration collected."
+
+# =============================================================================
+# 7. Git clone
+# =============================================================================
+echo "[7/15] Cloning repository..."
+
+if [ "$DRY_RUN" = true ]; then
+    echo "    Would clone $REPO_URL to $PROJECT_DIR (branch: $REPO_BRANCH)"
+else
+    mkdir -p "$PROJECT_DIR"
+    sudo -u $DEPLOY_USER git clone -b "$REPO_BRANCH" "$REPO_URL" "$PROJECT_DIR"
+    chown -R $DEPLOY_USER:$DEPLOY_USER "$PROJECT_DIR"
+fi
 
 # =============================================================================
 # 8. Create virtual environments with --clear and symlink detection
